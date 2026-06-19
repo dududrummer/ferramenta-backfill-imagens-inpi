@@ -16,9 +16,16 @@ function salvarImagem(nUrl, buffer, ext, baseDir) {
 // Processa um único n_url usando um circuito; atualiza o catálogo. Retorna o resultado.
 async function processarUm(nUrl, circuito, ctx) {
   const { catalogo, pool, cfg, eraTemImagem } = ctx;
+  const intervaloMs = cfg.ratePerCircuit > 0 ? 1000 / cfg.ratePerCircuit : 0;
   let tentativas = 0;
   while (tentativas < cfg.maxTentativas) {
     tentativas++;
+    if (intervaloMs > 0) {
+      // Espaça as requisições por circuito (rate-limit educado por IP de saída).
+      const espera = (circuito._proximaLiberacao || 0) - Date.now();
+      if (espera > 0) await new Promise(r => setTimeout(r, espera));
+      circuito._proximaLiberacao = Date.now() + intervaloMs;
+    }
     const res = await baixarBuffer(circuito, nUrl, { timeoutMs: cfg.timeoutMs });
     const cls = classificarResultado(res, cfg.placeholderHashes);
     if (cls.resultado === 'baixada') {

@@ -7,7 +7,7 @@ const { criarPool } = require('./tor-pool');
 const { criarClient, criarFonte } = require('./candidates');
 const { sincronizar } = require('./uploader');
 const { filtrarPendentes, processarUm } = require('./runner');
-const { nUrlDeCaminho } = require('./sharding');
+const { nUrlDeCaminho, caminhoImagem } = require('./sharding');
 
 function parseArgs(argv) {
   const cmd = argv[2];
@@ -72,18 +72,31 @@ async function comandoRun(cfg, catalogo, opts) {
   console.log('Concluído.', catalogo.estatisticas());
 }
 
+let _flushEmAndamento = null;
 async function flush(cfg, catalogo, fonte, opts = {}) {
-  const paraUpload = catalogo.pendentesParaUpload();
-  if (paraUpload.length > 0) {
-    await sincronizar(cfg);
-    catalogo.confirmarUpload(paraUpload.map(r => r.n_url));
-    if (!opts.keepLocal) fs.rmSync(cfg.localStaging, { recursive: true, force: true });
-  }
-  const paraMarcar = catalogo.pendentesParaMarcarDb();
-  if (paraMarcar.length > 0) {
-    await fonte.marcarTemImagem(paraMarcar, cfg.chUpdateBatch);
-    catalogo.confirmarMarcacaoDb(paraMarcar);
-  }
+  // Coalesce: se já há um flush rodando, aguarda o mesmo (evita rsync/delete concorrentes).
+  if (_flushEmAndamento) return _flushEmAndamento;
+  const sincronizarFn = opts._sincronizar || sincronizar;
+  _flushEmAndamento = (async () => {
+    const paraUpload = catalogo.pendentesParaUpload();   // [{ n_url, ext }]
+    if (paraUpload.length > 0) {
+      await sincronizarFn(cfg);
+      catalogo.confirmarUpload(paraUpload.map(r => r.n_url));
+      if (!opts.keepLocal) {
+        // Apaga só os arquivos confirmados deste snapshot; escritas concorrentes de
+        // outros workers (n_url fora do snapshot) são preservadas para o próximo flush.
+        for (const r of paraUpload) {
+          try { fs.rmSync(caminhoImagem(r.n_url, cfg.localStaging, r.ext), { force: true }); } catch (_) {}
+        }
+      }
+    }
+    const paraMarcar = catalogo.pendentesParaMarcarDb();
+    if (paraMarcar.length > 0) {
+      await fonte.marcarTemImagem(paraMarcar, cfg.chUpdateBatch);
+      catalogo.confirmarMarcacaoDb(paraMarcar);
+    }
+  })();
+  try { await _flushEmAndamento; } finally { _flushEmAndamento = null; }
 }
 
 async function main() {

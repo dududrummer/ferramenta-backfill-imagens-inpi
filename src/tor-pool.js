@@ -31,24 +31,32 @@ function criarPool(opts) {
   function newnym(circ) {
     return new Promise((resolve) => {
       if (!podeRotacionar(circ)) return resolve(false);
+      let resolvido = false;
+      let enviado = false;
+      const finalizar = (v) => { if (!resolvido) { resolvido = true; resolve(v); } };
       const sock = net.connect(circ.controlPort, torHost);
       let buf = '';
       sock.setEncoding('utf8');
-      sock.setTimeout(5000, () => { sock.destroy(); resolve(false); });
-      sock.on('error', () => resolve(false));
+      sock.setTimeout(5000, () => { sock.destroy(); finalizar(false); });
+      sock.on('error', () => finalizar(false));
       sock.on('connect', () => {
         sock.write(`AUTHENTICATE "${torControlPassword}"\r\n`);
       });
       sock.on('data', (d) => {
         buf += d;
-        if (buf.includes('250') && !buf.includes('NEWNYM-SENT')) {
-          buf = 'NEWNYM-SENT';
+        if (!enviado && buf.includes('250')) {
+          enviado = true;
           sock.write('SIGNAL NEWNYM\r\nQUIT\r\n');
           registrarRotacao(circ);
-          resolve(true);
+          finalizar(true);
+        } else if (!enviado && /(^|\n)5\d\d/.test(buf)) {
+          // erro de controle/autenticação (ex.: 515/551)
+          sock.destroy();
+          finalizar(false);
         }
       });
-      sock.on('close', () => resolve(true));
+      // Se fechar sem termos enviado o NEWNYM, considere falha.
+      sock.on('close', () => finalizar(enviado));
     });
   }
 
