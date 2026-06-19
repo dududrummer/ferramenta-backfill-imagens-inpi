@@ -1,0 +1,2 @@
+# Garante LF nos scripts shell em qualquer plataforma (necessário p/ rodar no Linux/WSL/Colab)
+*.sh text eol=lf
