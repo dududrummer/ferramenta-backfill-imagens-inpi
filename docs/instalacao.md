@@ -25,7 +25,7 @@ npm install
 
 ### 3. Configurar acesso SSH ao servidor
 
-A ferramenta usa SSH de duas formas: túnel para o ClickHouse e `rsync` / `find` remoto. Recomenda-se uma chave SSH dedicada:
+A ferramenta usa SSH para: executar `clickhouse-client` remotamente, fazer `rsync` e executar `find` remoto. Recomenda-se uma chave SSH dedicada:
 
 ```bash
 # Gerar chave (ou reutilizar uma existente)
@@ -108,11 +108,7 @@ SSH_HOST=seu.servidor.com
 SSH_USER=deploy
 SSH_KEY=/root/.ssh/id_neopi_backfill
 REMOTE_IMAGE_DIR=/var/neopi/bancoImagensINPI
-CH_HOST=localhost
-CH_PORT=8123
 CH_DATABASE=neopi
-CH_USER=default
-CH_PASSWORD=
 TOR_SOCKS_PORTS=9050,9052,9054,9056
 TOR_CONTROL_PORTS=9051,9053,9055,9057
 TOR_CONTROL_PASSWORD=
@@ -147,15 +143,11 @@ bash tor/start-tor.sh
 echo "Pronto para rodar"
 ```
 
-Em seguida, abrir o túnel SSH para o ClickHouse em background e executar com um range exclusivo para o Colab (por exemplo, o WSL processa 1–5000000 e o Colab processa 5000001–10000000):
+Em seguida, executar com um range exclusivo para o Colab (por exemplo, o WSL processa 1–5000000 e o Colab processa 5000001–10000000):
 
 ```python
 %%bash
 cd /content/backfill
-
-# Tunnel ClickHouse em background
-ssh -i /root/.ssh/id_neopi_backfill -L 8123:localhost:8123 \
-    deploy@seu.servidor.com -N -f -o StrictHostKeyChecking=accept-new
 
 # Indexar arquivos existentes (só na primeira vez)
 node src/cli.js index

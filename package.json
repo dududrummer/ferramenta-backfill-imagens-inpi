@@ -3,8 +3,12 @@
   "version": "0.1.0",
   "description": "Backfill em massa das imagens de marcas do INPI para o NEOPI",
   "type": "commonjs",
-  "engines": { "node": ">=20" },
-  "bin": { "backfill-imagens": "src/cli.js" },
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "backfill-imagens": "src/cli.js"
+  },
   "scripts": {
     "test": "jest",
     "index": "node src/cli.js index",
@@ -13,7 +17,6 @@
     "flush": "node src/cli.js flush"
   },
   "dependencies": {
-    "@clickhouse/client": "^1.0.0",
     "better-sqlite3": "^11.10.0",
     "dotenv": "^16.4.0",
     "socks-proxy-agent": "^8.0.5"

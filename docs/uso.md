@@ -3,24 +3,18 @@
 ## Visão geral do fluxo
 
 ```
-1. Abrir túnel SSH (ClickHouse)
-2. Subir instâncias Tor
-3. node src/cli.js index          # (uma vez) indexar o que já existe
-4. node src/cli.js run --phase 1  # baixar o que já tem tem_imagem=1 mas falta o arquivo
-5. node src/cli.js run --phase 2  # sondar os demais
-6. node src/cli.js status         # acompanhar progresso
+1. Subir instâncias Tor
+2. node src/cli.js index          # (uma vez) indexar o que já existe
+3. node src/cli.js run --phase 1  # baixar o que já tem tem_imagem=1 mas falta o arquivo
+4. node src/cli.js run --phase 2  # sondar os demais
+5. node src/cli.js status         # acompanhar progresso
 ```
 
 ---
 
 ## Pré-condições para qualquer comando
 
-1. **Túnel SSH para o ClickHouse ativo** (em um terminal separado, mantê-lo aberto):
-   ```bash
-   ssh -L 8123:localhost:8123 deploy@seu.servidor.com -N
-   ```
-
-2. **Instâncias Tor em execução** (só necessário para `run`):
+1. **Instâncias Tor em execução** (só necessário para `run`):
    ```bash
    bash tor/start-tor.sh
    ```

@@ -4,7 +4,7 @@ const { execFileSync } = require('child_process');
 const { carregarConfig } = require('./config');
 const { abrirCatalogo } = require('./catalog');
 const { criarPool } = require('./tor-pool');
-const { criarClient, criarFonte } = require('./candidates');
+const { criarFonte } = require('./candidates');
 const { sincronizar } = require('./uploader');
 const { filtrarPendentes, processarUm } = require('./runner');
 const { nUrlDeCaminho, caminhoImagem } = require('./sharding');
@@ -37,8 +37,7 @@ function comandoIndex(cfg, catalogo) {
 
 async function comandoRun(cfg, catalogo, opts) {
   const concurrency = opts.concurrency || cfg.concurrency;
-  const client = criarClient(cfg.ch);
-  const fonte = criarFonte({ client, database: cfg.ch.database });
+  const fonte = criarFonte({ ssh: cfg.ssh, database: cfg.ch.database });
   const pool = criarPool(cfg);
 
   let candidatos, eraTemImagem;
@@ -68,7 +67,6 @@ async function comandoRun(cfg, catalogo, opts) {
   }
   await Promise.all(Array.from({ length: concurrency }, worker));
   await flush(cfg, catalogo, fonte, opts);
-  await client.close();
   console.log('Concluído.', catalogo.estatisticas());
 }
 
@@ -108,10 +106,8 @@ async function main() {
     else if (cmd === 'run') await comandoRun(cfg, catalogo, opts);
     else if (cmd === 'status') console.log(catalogo.estatisticas());
     else if (cmd === 'flush') {
-      const client = criarClient(cfg.ch);
-      const fonte = criarFonte({ client, database: cfg.ch.database });
+      const fonte = criarFonte({ ssh: cfg.ssh, database: cfg.ch.database });
       await flush(cfg, catalogo, fonte, opts);
-      await client.close();
     } else {
       console.log('Comandos: index | run --phase <1|2> [--range A-B] [--concurrency N] [--keep-local] | status | flush');
     }

@@ -20,7 +20,7 @@
 ## Fluxo de dados
 
 ```
-ClickHouse (via túnel SSH)
+ClickHouse consultado via `ssh ... clickhouse-client` (sem túnel)
   │  SELECT n_url WHERE tem_imagem=1|0
   ▼
 candidates.js ──► lista de candidatos

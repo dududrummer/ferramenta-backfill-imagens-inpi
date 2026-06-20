@@ -18,21 +18,11 @@ Copie `.env.example` para `.env` e edite os valores. O arquivo é carregado auto
 
 ## Grupo ClickHouse
 
-O ClickHouse é acessado exclusivamente via túnel SSH. Configure `CH_HOST` e `CH_PORT` para apontar para o endpoint local do túnel, **não** para o servidor remoto diretamente.
-
-Antes de rodar qualquer comando, abra o túnel em um terminal separado e mantenha-o ativo:
-
-```bash
-ssh -L 8123:localhost:8123 deploy@seu.servidor.com -N
-```
+O ClickHouse é consultado executando `clickhouse-client` no servidor via SSH (o servidor já tem o cliente instalado); não há túnel. Só `CH_DATABASE` é usado.
 
 | Variável | Obrigatória | Padrão | Descrição |
 |---|---|---|---|
-| `CH_HOST` | Não | `localhost` | Host do endpoint local do túnel SSH |
-| `CH_PORT` | Não | `8123` | Porta do endpoint local do túnel SSH |
 | `CH_DATABASE` | Não | `neopi` | Nome do banco de dados no ClickHouse |
-| `CH_USER` | Não | `default` | Usuário do ClickHouse |
-| `CH_PASSWORD` | Não | `""` (vazio) | Senha do ClickHouse |
 
 ---
 

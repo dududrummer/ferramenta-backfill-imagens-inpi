@@ -1,4 +1,4 @@
-const { construtorQueries, criarFonte } = require('../src/candidates');
+const { construtorQueries, criarFonte, montarSshArgs } = require('../src/candidates');
 
 test('queries de candidatos por fase', () => {
   const q = construtorQueries('neopi');
@@ -14,20 +14,27 @@ test('updateTemImagem monta o ALTER ... UPDATE com IN', () => {
     .toBe('ALTER TABLE neopi.marcas UPDATE tem_imagem=1 WHERE n_url IN (1,2,3)');
 });
 
-test('criarFonte.candidatos delega ao client e retorna n_urls', async () => {
-  const fakeClient = {
-    query: async () => ({ json: async () => [{ n_url: 5 }, { n_url: 6 }] }),
-  };
-  const fonte = criarFonte({ client: fakeClient, database: 'neopi' });
-  expect(await fonte.candidatosFase1()).toEqual([5, 6]);
+test('montarSshArgs inclui chave, porta e destino', () => {
+  expect(montarSshArgs({ host: 'h', user: 'u', key: '/k', port: 2222 }))
+    .toEqual(['-i', '/k', '-p', '2222', 'u@h']);
+  expect(montarSshArgs({ host: 'h', user: 'u' })).toEqual(['u@h']);
 });
 
-test('criarFonte.marcarTemImagem executa em lotes', async () => {
-  const executados = [];
-  const fakeClient = { command: async ({ query }) => { executados.push(query); } };
-  const fonte = criarFonte({ client: fakeClient, database: 'neopi' });
-  await fonte.marcarTemImagem([1, 2, 3, 4, 5], 2);   // lotes de 2
-  expect(executados.length).toBe(3);
-  expect(executados[0]).toContain('IN (1,2)');
-  expect(executados[2]).toContain('IN (5)');
+test('candidatosFase1 roda clickhouse-client via ssh e retorna n_urls', async () => {
+  let comando = null;
+  const fakeExec = (bin, args, optsX, cb) => { comando = args[args.length - 1]; cb(null, '5\n6\n'); };
+  const fonte = criarFonte({ ssh: { host: 'h', user: 'u' }, database: 'neopi' }, { _execFile: fakeExec });
+  expect(await fonte.candidatosFase1()).toEqual([5, 6]);
+  expect(comando).toContain('clickhouse-client');
+  expect(comando).toContain('tem_imagem = 1');
+});
+
+test('marcarTemImagem executa em lotes via ssh', async () => {
+  const comandos = [];
+  const fakeExec = (bin, args, optsX, cb) => { comandos.push(args[args.length - 1]); cb(null, ''); };
+  const fonte = criarFonte({ ssh: { host: 'h', user: 'u' }, database: 'neopi' }, { _execFile: fakeExec });
+  await fonte.marcarTemImagem([1, 2, 3, 4, 5], 2);
+  expect(comandos.length).toBe(3);
+  expect(comandos[0]).toContain('IN (1,2)');
+  expect(comandos[2]).toContain('IN (5)');
 });
