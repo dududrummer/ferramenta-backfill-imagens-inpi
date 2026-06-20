@@ -1,9 +1,9 @@
 # Modelo de uma instância Tor. O start-tor.sh substitui __SOCKS__, __CONTROL__ e __DATA__.
-SocksPort __SOCKS__
+# IsolateSOCKSAuth é um FLAG da linha SocksPort (isola circuito por credencial SOCKS);
+# já é padrão no Tor, mas deixamos explícito. NÃO é uma opção solta do torrc.
+SocksPort __SOCKS__ IsolateSOCKSAuth
 ControlPort __CONTROL__
 DataDirectory __DATA__
 CookieAuthentication 0
-# Isola circuitos por credencial SOCKS (cada worker = circuito/IP distinto)
-IsolateSOCKSAuth 1
 # Tempo máximo antes de um circuito ser considerado "sujo" e poder ser trocado
 MaxCircuitDirtiness 60

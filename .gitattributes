@@ -1,2 +1,4 @@
 # Garante LF nos scripts shell em qualquer plataforma (necessário p/ rodar no Linux/WSL/Colab)
 *.sh text eol=lf
+# O torrc é lido pelo Tor no Linux; CRLF quebraria as opções
+tor/torrc.template text eol=lf

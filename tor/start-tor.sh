@@ -18,7 +18,7 @@ for i in "${!S[@]}"; do
   mkdir -p "$data"; chmod 700 "$data"
   conf="$BASE/torrc-$socks"
   sed -e "s|__SOCKS__|$socks|" -e "s|__CONTROL__|$control|" -e "s|__DATA__|$data|" \
-    "$DIR/torrc.template" > "$conf"
+    "$DIR/torrc.template" | tr -d '\r' > "$conf"
   echo "Subindo Tor SOCKS=$socks CONTROL=$control"
   tor -f "$conf" > "$BASE/tor$socks.log" 2>&1 &
 done
