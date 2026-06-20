@@ -1,10 +1,10 @@
 const { construtorQueries, criarFonte, montarSshArgs } = require('../src/candidates');
 
-test('naoNominativas exclui Nominativa pura e vazio, com dedup', () => {
+test('naoNominativas exclui só Nominativa pura (inclui em branco), com dedup', () => {
   const q = construtorQueries('neopi');
   const sql = q.naoNominativas();
   expect(sql).toMatch(/apresentacao != 'Nominativa'/);
-  expect(sql).toMatch(/apresentacao != ''/);
+  expect(sql).not.toMatch(/apresentacao != ''/);   // branco/desconhecido é incluído
   expect(sql).toMatch(/FROM neopi\.marcas/);
   expect(sql).toMatch(/GROUP BY n_url/);
   expect(q.naoNominativas(100, 200)).toMatch(/n_url\s*>=\s*100 AND n_url\s*<=\s*200/);

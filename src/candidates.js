@@ -3,10 +3,11 @@ const { execFile } = require('child_process');
 function construtorQueries(database) {
   const T = `${database}.marcas`;
   return {
-    // Marcas NÃO puramente nominativas (essas têm logo). Exclui 'Nominativa' pura e vazio.
+    // Marcas NÃO puramente nominativas (essas têm logo). Exclui só 'Nominativa' pura;
+    // apresentação em branco/desconhecida É incluída (tenta baixar mesmo assim).
     // Dedup por n_url (MergeTree pode ter linhas repetidas); tem = 1 se qualquer linha já marca imagem.
     naoNominativas(min, max) {
-      let w = "apresentacao != 'Nominativa' AND apresentacao != '' AND n_url > 0";
+      let w = "apresentacao != 'Nominativa' AND n_url > 0";
       if (min != null && max != null) w += ` AND n_url >= ${min} AND n_url <= ${max}`;
       return `SELECT n_url, max(tem_imagem) AS tem FROM ${T} WHERE ${w} GROUP BY n_url ORDER BY n_url`;
     },
