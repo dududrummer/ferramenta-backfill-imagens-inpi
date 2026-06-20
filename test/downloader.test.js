@@ -38,3 +38,7 @@ test('baixarBuffer usa o injetor de http e monta o path correto', async () => {
   expect(pathChamado).toContain('codProcesso=449552');
   expect(r.buffer).toBe(jpg);
 });
+
+test('classificarResultado: 302 (sem sessão) → sessao', () => {
+  expect(classificarResultado({ status: 302, buffer: null }, []).resultado).toBe('sessao');
+});

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const { caminhoImagem, dirImagem } = require('./sharding');
 const { baixarBuffer, classificarResultado } = require('./downloader');
+const { warmSession } = require('./http-session');
 
 function filtrarPendentes(candidatos, catalogo) {
   return candidatos.filter(c => !catalogo.jaProcessado(c.n_url));
@@ -26,6 +27,11 @@ async function processarUm(candidato, circuito, ctx) {
       if (espera > 0) await new Promise(r => setTimeout(r, espera));
       circuito._proximaLiberacao = Date.now() + intervaloMs;
     }
+    // Garante a sessão pePI (cookies) aquecida antes de baixar.
+    if (!circuito.warm) {
+      try { await warmSession(circuito, cfg.timeoutMs); } catch (_) { circuito.warm = false; }
+      if (!circuito.warm) { await pool.newnym(circuito); await new Promise(r => setTimeout(r, 1000 * tentativas)); continue; }
+    }
     const res = await baixarBuffer(circuito, nUrl, { timeoutMs: cfg.timeoutMs });
     const cls = classificarResultado(res, cfg.placeholderHashes);
     if (cls.resultado === 'baixada') {
@@ -39,12 +45,17 @@ async function processarUm(candidato, circuito, ctx) {
       catalogo.marcar(nUrl, 'sem_imagem', { tentativas });
       return 'sem_imagem';
     }
-    if (cls.resultado === 'bloqueio') {
-      await pool.newnym(circuito);
-      await new Promise(r => setTimeout(r, 1000 * tentativas));   // backoff
+    if (cls.resultado === 'sessao') {
+      circuito.warm = false;          // re-aquece a sessão na próxima volta e re-tenta
       continue;
     }
-    await new Promise(r => setTimeout(r, 1000 * tentativas));     // erro transitório
+    if (cls.resultado === 'bloqueio') {
+      await pool.newnym(circuito);
+      circuito.warm = false;          // IP de saída mudou → sessão precisa ser refeita
+      await new Promise(r => setTimeout(r, 1000 * tentativas));
+      continue;
+    }
+    await new Promise(r => setTimeout(r, 1000 * tentativas));   // erro transitório
   }
   catalogo.marcar(nUrl, 'falhou', { tentativas, erro: 'maxTentativas' });
   return 'falhou';

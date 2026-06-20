@@ -1,5 +1,6 @@
 const net = require('net');
 const { SocksProxyAgent } = require('socks-proxy-agent');
+const { CookieJar } = require('./http-session');
 
 function criarPool(opts) {
   const {
@@ -10,7 +11,7 @@ function criarPool(opts) {
   const circuitos = torSocksPorts.map((socksPort, i) => {
     const user = `slot${i + 1}`;
     const agent = new SocksProxyAgent(`socks5h://${user}:x@${torHost}:${socksPort}`);
-    return { id: i, socksPort, controlPort: torControlPorts[i], agent, ultimaRotacao: -Infinity };
+    return { id: i, socksPort, controlPort: torControlPorts[i], agent, ultimaRotacao: -Infinity, jar: new CookieJar(), warm: false };
   });
 
   let idx = 0;
