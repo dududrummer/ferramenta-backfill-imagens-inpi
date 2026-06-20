@@ -6,7 +6,7 @@
 |---|---|
 | `config.js` | Lê e valida variáveis de ambiente via `dotenv`; exporta objeto de configuração tipado |
 | `cli.js` | Ponto de entrada; faz parse dos argumentos (`index`, `run`, `status`, `flush`); orquestra os demais módulos |
-| `candidates.js` | Cria o cliente ClickHouse e implementa as queries de Fase 1 / Fase 2 e o `ALTER TABLE ... UPDATE tem_imagem=1` |
+| `candidates.js` | Consulta marcas não-nominativas (`apresentacao != 'Nominativa'`) via `clickhouse-client` por SSH; implementa o `ALTER TABLE ... UPDATE tem_imagem=1` para registros que tinham `tem_imagem=0` e tiveram imagem baixada |
 | `catalog.js` | Gerencia o SQLite local (status por `n_url`); inserção em lote dos existentes, consultas de pendentes, confirmações |
 | `tor-pool.js` | Cria e gerencia o pool de circuitos Tor; round-robin de circuitos; dispara `SIGNAL NEWNYM` via ControlPort |
 | `runner.js` | Loop de download de um único `n_url`: chama downloader, classifica resultado, salva staging, atualiza catálogo, aciona newnym em bloqueio |
@@ -21,9 +21,9 @@
 
 ```
 ClickHouse consultado via `ssh ... clickhouse-client` (sem túnel)
-  │  SELECT n_url WHERE tem_imagem=1|0
+  │  SELECT n_url, max(tem_imagem) WHERE apresentacao != 'Nominativa' GROUP BY n_url
   ▼
-candidates.js ──► lista de candidatos
+candidates.js ──► lista de candidatos [{n_url, temImagem}]
   │
   ▼
 catalog.js ──► filtrarPendentes (exclui já processados)
@@ -54,7 +54,7 @@ fila de n_url pendentes
         │
      catalog.js confirmarUpload(nUrls)
         │
-     [Fase 2 apenas]
+     [quando candidato tinha temImagem=false]
         ▼
      candidates.js marcarTemImagem(nUrls) → ALTER TABLE marcas UPDATE tem_imagem=1
         │
@@ -92,7 +92,7 @@ Localização padrão: `./catalogo.sqlite` (configurável via `CATALOG_PATH`).
 
 - `uploaded=0` + `status=baixada` → arquivo em staging, aguardando rsync
 - `uploaded=1` → arquivo já está no servidor
-- `marcar_db=1` → `n_url` precisa ser incluído no próximo `ALTER TABLE UPDATE tem_imagem=1` (só usado na Fase 2)
+- `marcar_db=1` → `n_url` precisa ser incluído no próximo `ALTER TABLE UPDATE tem_imagem=1` (usado quando o registro tinha `tem_imagem=0` no banco e a imagem foi baixada com sucesso)
 - `marcar_db=0` após confirmação → marcação no ClickHouse concluída
 
 ### Idempotência

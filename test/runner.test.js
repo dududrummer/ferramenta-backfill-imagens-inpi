@@ -5,7 +5,8 @@ const path = require('path');
 
 test('filtrarPendentes remove o que já foi processado no catálogo', () => {
   const catalogo = { jaProcessado: (n) => n === 2 };
-  expect(filtrarPendentes([1, 2, 3], catalogo)).toEqual([1, 3]);
+  const cands = [{ n_url: 1 }, { n_url: 2 }, { n_url: 3 }];
+  expect(filtrarPendentes(cands, catalogo)).toEqual([{ n_url: 1 }, { n_url: 3 }]);
 });
 
 test('salvarImagem grava no caminho sharded e retorna a extensão', () => {

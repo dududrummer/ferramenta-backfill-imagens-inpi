@@ -27,8 +27,8 @@ bash tor/start-tor.sh
 # 2. Indexar arquivos que já existem no servidor (só na primeira vez)
 node src/cli.js index
 
-# 3. Rodar o backfill — Fase 1 (registros com tem_imagem=1 sem arquivo físico)
-node src/cli.js run --phase 1
+# 3. Rodar o backfill — baixa imagens de todas as marcas não-nominativas (apresentacao != 'Nominativa')
+node src/cli.js run
 
 # 4. Checar progresso a qualquer momento
 node src/cli.js status

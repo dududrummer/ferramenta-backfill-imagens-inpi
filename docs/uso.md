@@ -5,9 +5,8 @@
 ```
 1. Subir instâncias Tor
 2. node src/cli.js index          # (uma vez) indexar o que já existe
-3. node src/cli.js run --phase 1  # baixar o que já tem tem_imagem=1 mas falta o arquivo
-4. node src/cli.js run --phase 2  # sondar os demais
-5. node src/cli.js status         # acompanhar progresso
+3. node src/cli.js run            # baixar imagens de marcas não-nominativas ainda ausentes
+4. node src/cli.js status         # acompanhar progresso
 ```
 
 ---
@@ -40,28 +39,31 @@ Indexados 42137 arquivos já existentes no servidor.
 
 ---
 
-### `run --phase <1|2>`
+### `run`
 
-Busca candidatos no ClickHouse, filtra o que o catálogo local já registrou como processado, e baixa as imagens restantes em paralelo via pool de circuitos Tor. Após cada lote de `RSYNC_BATCH` downloads, executa um flush (rsync + marcação no DB).
+Busca no ClickHouse todas as marcas não-nominativas (`apresentacao != 'Nominativa'`), filtra o que o catálogo local já registrou como processado, e baixa as imagens restantes em paralelo via pool de circuitos Tor. Após cada lote de `RSYNC_BATCH` downloads, executa um flush (rsync + marcação no DB).
+
+A seleção inclui todos os valores de `apresentacao` que implicam logo: Figurativa, Mista, Tridimensional, e combinações como "Nominativa e Tridimensional". Apenas `Nominativa` pura (sem logo) é excluída.
+
+Registros já presentes no catálogo local são automaticamente pulados — basta re-executar o comando após uma interrupção.
 
 **Opções:**
 
 | Flag | Obrigatória | Descrição |
 |---|---|---|
-| `--phase 1` ou `--phase 2` | Sim | Seleciona a fase (ver abaixo) |
-| `--range A-B` | Não (Fase 2 apenas) | Restringe os candidatos ao intervalo `n_url >= A AND n_url <= B` |
+| `--range A-B` | Não | Restringe os candidatos ao intervalo `n_url >= A AND n_url <= B` |
 | `--concurrency N` | Não | Sobrescreve `CONCURRENCY` do `.env` para esta execução |
 | `--keep-local` | Não | Não apaga o diretório de staging local após o rsync |
 
 ```bash
-# Fase 1 completa
-node src/cli.js run --phase 1
+# Baixar todas as marcas não-nominativas ainda ausentes
+node src/cli.js run
 
-# Fase 2 com range e concorrência reduzida
-node src/cli.js run --phase 2 --range 1-5000000 --concurrency 4
+# Restringir a um range de n_url (útil para execução paralela WSL + Colab)
+node src/cli.js run --range 1-5000000
 
-# Manter arquivos locais após o upload (útil para depuração)
-node src/cli.js run --phase 1 --keep-local
+# Com concorrência reduzida e mantendo arquivos locais
+node src/cli.js run --range 1-5000000 --concurrency 4 --keep-local
 ```
 
 ---
@@ -102,33 +104,22 @@ node src/cli.js flush --keep-local
 
 ---
 
-## As duas fases
+## Critério de seleção
 
-### Fase 1 — alta taxa de acerto
+A ferramenta consulta o ClickHouse via `clickhouse-client` por SSH e seleciona marcas não-nominativas:
 
-Consulta:
 ```sql
-SELECT DISTINCT n_url FROM neopi.marcas WHERE tem_imagem = 1 AND n_url > 0
+SELECT n_url, max(tem_imagem) AS tem
+FROM neopi.marcas
+WHERE apresentacao != 'Nominativa' AND apresentacao != '' AND n_url > 0
+GROUP BY n_url
+ORDER BY n_url
 ```
 
-São registros que o banco já diz ter imagem (`tem_imagem=1`), mas o arquivo físico pode estar faltando no servidor. A taxa de acerto é alta (o INPI realmente tem a imagem) e o custo de cada requisição é baixo. **Comece sempre pela Fase 1.**
+A coluna `tem_imagem` retornada é usada para decidir se o registro precisa ser atualizado no banco após o download:
 
-Quando a ferramenta baixa uma imagem na Fase 1, ela **não** altera o `tem_imagem` no ClickHouse (já é 1). Só faz o upload do arquivo.
-
-### Fase 2 — sondagem exaustiva
-
-Consulta:
-```sql
-SELECT DISTINCT n_url FROM neopi.marcas WHERE tem_imagem = 0 AND n_url > 0
-  [AND n_url >= A AND n_url <= B]
-```
-
-Sonda registros que o banco considera sem imagem (`tem_imagem=0`) ou desconhecidos. A taxa de acerto é menor. Quando uma imagem é encontrada, a ferramenta:
-1. Salva o arquivo no staging.
-2. Faz upload via rsync.
-3. Executa `ALTER TABLE neopi.marcas UPDATE tem_imagem=1 WHERE n_url IN (...)` no ClickHouse.
-
-Use `--range` para dividir o trabalho entre ambientes (WSL + Colab) sem sobreposição.
+- Se `tem_imagem` já era `1` → a ferramenta apenas salva o arquivo (o banco já está correto).
+- Se `tem_imagem` era `0` → após baixar a imagem, a ferramenta executa `ALTER TABLE marcas UPDATE tem_imagem=1` para o `n_url` correspondente.
 
 ---
 
@@ -138,23 +129,23 @@ Basta re-executar o mesmo comando. O catálogo local SQLite registra cada `n_url
 
 ```bash
 # Interrompido? Só rodar de novo:
-node src/cli.js run --phase 1
+node src/cli.js run
 ```
 
 ---
 
 ## Execução paralela: WSL + Colab
 
-Para acelerar a Fase 2, que pode envolver milhões de registros, é possível rodar o WSL e o Colab em simultâneo. Cada ambiente deve processar um range disjunto de `n_url`:
+Para acelerar o processamento de grandes volumes, é possível rodar o WSL e o Colab em simultâneo. Cada ambiente deve processar um range disjunto de `n_url`:
 
 **WSL:**
 ```bash
-node src/cli.js run --phase 2 --range 1-5000000
+node src/cli.js run --range 1-5000000
 ```
 
 **Colab:**
 ```bash
-node src/cli.js run --phase 2 --range 5000001-10000000
+node src/cli.js run --range 5000001-10000000
 ```
 
 Cada ambiente tem seu próprio catálogo SQLite local (`CATALOG_PATH`). Ambos fazem rsync para o mesmo diretório remoto e ambos atualizam o ClickHouse — isso é seguro porque os ranges são disjuntos.
@@ -162,5 +153,6 @@ Cada ambiente tem seu próprio catálogo SQLite local (`CATALOG_PATH`). Ambos fa
 Para descobrir o intervalo total de `n_url` a cobrir, consulte o ClickHouse antes de começar:
 
 ```sql
-SELECT min(n_url), max(n_url) FROM neopi.marcas WHERE tem_imagem = 0
+SELECT min(n_url), max(n_url) FROM neopi.marcas
+WHERE apresentacao != 'Nominativa' AND apresentacao != '' AND n_url > 0
 ```

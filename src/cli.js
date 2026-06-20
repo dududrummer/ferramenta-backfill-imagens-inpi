@@ -14,8 +14,7 @@ function parseArgs(argv) {
   const opts = {};
   for (let i = 3; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--phase') opts.phase = Number(argv[++i]);
-    else if (a === '--range') opts.range = argv[++i];
+    if (a === '--range') opts.range = argv[++i];
     else if (a === '--concurrency') opts.concurrency = Number(argv[++i]);
     else if (a === '--keep-local') opts.keepLocal = true;
   }
@@ -40,26 +39,19 @@ async function comandoRun(cfg, catalogo, opts) {
   const fonte = criarFonte({ ssh: cfg.ssh, database: cfg.ch.database });
   const pool = criarPool(cfg);
 
-  let candidatos, eraTemImagem;
-  if (opts.phase === 2) {
-    let min, max;
-    if (opts.range) { [min, max] = opts.range.split('-').map(Number); }
-    candidatos = await fonte.candidatosFase2(min, max);
-    eraTemImagem = false;
-  } else {
-    candidatos = await fonte.candidatosFase1();
-    eraTemImagem = true;
-  }
+  let min, max;
+  if (opts.range) { [min, max] = opts.range.split('-').map(Number); }
+  const candidatos = await fonte.candidatos(min, max);
   const pendentes = filtrarPendentes(candidatos, catalogo);
-  console.log(`Fase ${opts.phase || 1}: ${pendentes.length} a baixar (de ${candidatos.length} candidatos).`);
+  console.log(`Não-nominativas: ${pendentes.length} a baixar (de ${candidatos.length} candidatas).`);
 
-  const ctx = { catalogo, pool, cfg, eraTemImagem };
+  const ctx = { catalogo, pool, cfg };
   let i = 0, baixadas = 0;
   async function worker() {
     while (i < pendentes.length) {
-      const nUrl = pendentes[i++];
+      const candidato = pendentes[i++];
       const circ = pool.proximoCircuito();
-      const r = await processarUm(nUrl, circ, ctx);
+      const r = await processarUm(candidato, circ, ctx);
       if (r === 'baixada') baixadas++;
       if (baixadas > 0 && baixadas % cfg.rsyncBatch === 0) await flush(cfg, catalogo, fonte, opts);
       if ((i % 500) === 0) console.log(`...${i}/${pendentes.length}`);
@@ -109,7 +101,7 @@ async function main() {
       const fonte = criarFonte({ ssh: cfg.ssh, database: cfg.ch.database });
       await flush(cfg, catalogo, fonte, opts);
     } else {
-      console.log('Comandos: index | run --phase <1|2> [--range A-B] [--concurrency N] [--keep-local] | status | flush');
+      console.log('Comandos: index | run [--range A-B] [--concurrency N] [--keep-local] | status | flush');
     }
   } finally {
     catalogo.fechar();
