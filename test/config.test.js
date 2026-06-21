@@ -24,3 +24,15 @@ test('quantidades de portas SOCKS e CONTROL devem bater', () => {
   expect(() => carregarConfig({ ...baseEnv, TOR_CONTROL_PORTS: '9051' }))
     .toThrow(/portas/);
 });
+
+test('modo servidor usa imageDir como base das imagens', () => {
+  const c = carregarConfig({ ...baseEnv, MODO: 'servidor', REMOTE_IMAGE_DIR: '/var/neopi/bancoImagensINPI' });
+  expect(c.modo).toBe('servidor');
+  expect(c.baseImagens).toBe('/var/neopi/bancoImagensINPI');
+});
+
+test('modo remoto (default) usa localStaging como base', () => {
+  const c = carregarConfig({ ...baseEnv, LOCAL_STAGING: './staging' });
+  expect(c.modo).toBe('remoto');
+  expect(c.baseImagens).toBe('./staging');
+});

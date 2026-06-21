@@ -9,8 +9,8 @@ test('nominativas e maxNUrl montam o SQL certo', () => {
 });
 
 test('updateTemImagem monta o ALTER ... UPDATE com IN', () => {
-  const q = construtorQueries('neopi');
-  expect(q.updateTemImagem([1, 2, 3])).toBe('ALTER TABLE neopi.marcas UPDATE tem_imagem=1 WHERE n_url IN (1,2,3)');
+  expect(construtorQueries('neopi').updateTemImagem([1, 2, 3]))
+    .toBe('ALTER TABLE neopi.marcas UPDATE tem_imagem=1 WHERE n_url IN (1,2,3)');
 });
 
 test('montarSshArgs inclui chave, porta e destino', () => {
@@ -18,24 +18,25 @@ test('montarSshArgs inclui chave, porta e destino', () => {
   expect(montarSshArgs({ host: 'h', user: 'u' })).toEqual(['u@h']);
 });
 
-test('nominativos retorna um Set de n_urls', async () => {
-  const fakeExec = (bin, args, o, cb) => cb(null, '10\n11\n12\n');
-  const fonte = criarFonte({ ssh: { host: 'h', user: 'u' }, database: 'neopi' }, { _execFile: fakeExec });
+test('nominativos usa o executor e retorna Set', async () => {
+  let comando = null;
+  const executor = async (cmd) => { comando = cmd; return '10\n11\n12\n'; };
+  const fonte = criarFonte({ executor, database: 'neopi' });
   const set = await fonte.nominativos();
   expect(set.has(11)).toBe(true);
   expect(set.size).toBe(3);
+  expect(comando).toContain('clickhouse-client');
+  expect(comando).toContain("apresentacao = 'Nominativa'");
 });
 
-test('maxNUrl retorna número', async () => {
-  const fakeExec = (bin, args, o, cb) => cb(null, '6497967\n');
-  const fonte = criarFonte({ ssh: { host: 'h', user: 'u' }, database: 'neopi' }, { _execFile: fakeExec });
+test('maxNUrl usa o executor e retorna número', async () => {
+  const fonte = criarFonte({ executor: async () => '6497967\n', database: 'neopi' });
   expect(await fonte.maxNUrl()).toBe(6497967);
 });
 
-test('marcarTemImagem executa em lotes', async () => {
+test('marcarTemImagem executa em lotes via executor', async () => {
   const cmds = [];
-  const fakeExec = (bin, args, o, cb) => { cmds.push(args[args.length - 1]); cb(null, ''); };
-  const fonte = criarFonte({ ssh: { host: 'h', user: 'u' }, database: 'neopi' }, { _execFile: fakeExec });
+  const fonte = criarFonte({ executor: async (c) => { cmds.push(c); return ''; }, database: 'neopi' });
   await fonte.marcarTemImagem([1, 2, 3, 4, 5], 2);
   expect(cmds.length).toBe(3);
   expect(cmds[0]).toContain('IN (1,2)');

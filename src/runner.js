@@ -55,7 +55,7 @@ async function processarUm(candidato, circuito, ctx) {
     const res = await baixarBuffer(circuito, nUrl, { timeoutMs: cfg.timeoutMs });
     const cls = classificarResultado(res, cfg.placeholderHashes);
     if (cls.resultado === 'baixada') {
-      salvarImagem(nUrl, cls.buffer, cls.ext, cfg.localStaging);
+      salvarImagem(nUrl, cls.buffer, cls.ext, cfg.baseImagens);
       catalogo.marcar(nUrl, 'baixada', {
         ext: cls.ext, uploaded: 0, marcar_db: cfg.marcarTemImagem ? 1 : 0, tentativas,
       });

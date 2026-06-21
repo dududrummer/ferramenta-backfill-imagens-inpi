@@ -24,6 +24,11 @@ function carregarConfig(env = process.env) {
       key: env.SSH_KEY || null,
       port: parseInt(env.SSH_PORT || '22', 10),
     },
+    modo: (env.MODO || 'remoto'),
+    imageDir: env.IMAGE_DIR || env.REMOTE_IMAGE_DIR,
+    baseImagens: ((env.MODO || 'remoto') === 'servidor')
+      ? (env.IMAGE_DIR || env.REMOTE_IMAGE_DIR)
+      : (env.LOCAL_STAGING || './staging'),
     remoteImageDir: exigir(env, 'REMOTE_IMAGE_DIR'),
     ch: {
       host: env.CH_HOST || 'localhost',

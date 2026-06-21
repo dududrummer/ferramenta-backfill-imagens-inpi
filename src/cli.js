@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 const fs = require('fs');
-const { execFileSync } = require('child_process');
 const { carregarConfig } = require('./config');
 const { abrirCatalogo } = require('./catalog');
 const { criarPool } = require('./tor-pool');
 const { criarFonte } = require('./candidates');
+const { criarExecutor } = require('./exec');
 const { sincronizar } = require('./uploader');
 const { filtrarPendentes, processarUm, registrarEvento } = require('./runner');
 const { nUrlDeCaminho, caminhoImagem } = require('./sharding');
@@ -21,26 +21,24 @@ function parseArgs(argv) {
   return { cmd, opts };
 }
 
-// Lista os n_urls que JÁ têm arquivo no servidor (verdade absoluta do que está feito).
-function listarServidor(cfg) {
-  const sshArgs = [];
-  if (cfg.ssh.key) sshArgs.push('-i', cfg.ssh.key);
-  if (cfg.ssh.port) sshArgs.push('-p', String(cfg.ssh.port));
-  sshArgs.push(`${cfg.ssh.user}@${cfg.ssh.host}`, `find ${cfg.remoteImageDir} -type f -name '*.*'`);
-  const out = execFileSync('ssh', sshArgs, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 1024 });
+// Lista os n_urls que JÁ têm arquivo (no servidor) — verdade do que está feito.
+async function listarServidor(cfg, executor) {
+  const out = await executor(`find ${cfg.imageDir} -type f -name '*.*'`);
   return out.split('\n').map(nUrlDeCaminho).filter(n => n != null);
 }
 
-// Constrói o índice do que já existe no servidor via SSH find.
-function comandoIndex(cfg, catalogo) {
-  const nUrls = listarServidor(cfg);
+// Constrói o índice do que já existe no servidor via find (local ou SSH).
+async function comandoIndex(cfg, catalogo) {
+  const executor = criarExecutor(cfg);
+  const nUrls = await listarServidor(cfg, executor);
   catalogo.inserirExistentes(nUrls);
-  console.log(`Indexados ${nUrls.length} arquivos já existentes no servidor.`);
+  console.log(`Indexados ${nUrls.length} arquivos já existentes.`);
 }
 
 async function comandoRun(cfg, catalogo, opts) {
   const concurrency = opts.concurrency || cfg.concurrency;
-  const fonte = criarFonte({ ssh: cfg.ssh, database: cfg.ch.database });
+  const executor = criarExecutor(cfg);
+  const fonte = criarFonte({ executor, database: cfg.ch.database });
   const pool = criarPool(cfg);
   const FLOOR = 4145;
 
@@ -52,10 +50,11 @@ async function comandoRun(cfg, catalogo, opts) {
   }
   if (max == null) max = await fonte.maxNUrl();
 
+  console.log('Modo:', cfg.modo, '| imagens em:', cfg.baseImagens);
   console.log(`Carregando nominativas e já processados (faixa ${min}–${max})...`);
   const nominativos = await fonte.nominativos(min, max);
-  console.log('Listando imagens já no servidor (find via SSH)...');
-  const noServidor = new Set(listarServidor(cfg));
+  console.log('Listando imagens já no servidor (find)...');
+  const noServidor = new Set(await listarServidor(cfg, executor));
   const semImagem = new Set(catalogo.nUrlsComStatus('sem_imagem'));
   const processados = new Set([...noServidor, ...semImagem]);
   console.log(`Já no servidor: ${noServidor.size} | sem_imagem (catálogo): ${semImagem.size}.`);
@@ -95,16 +94,18 @@ async function flush(cfg, catalogo, fonte, opts = {}) {
   if (_flushEmAndamento) return _flushEmAndamento;
   const sincronizarFn = opts._sincronizar || sincronizar;
   _flushEmAndamento = (async () => {
-    const paraUpload = catalogo.pendentesParaUpload();   // [{ n_url, ext }]
-    if (paraUpload.length > 0) {
-      await sincronizarFn(cfg);
-      catalogo.confirmarUpload(paraUpload.map(r => r.n_url));
-      registrarEvento(cfg, `${new Date().toISOString().slice(11,19)} FLUSH      enviadas ${paraUpload.length} imagens ao servidor`);
-      if (!opts.keepLocal) {
-        // Apaga só os arquivos confirmados deste snapshot; escritas concorrentes de
-        // outros workers (n_url fora do snapshot) são preservadas para o próximo flush.
-        for (const r of paraUpload) {
-          try { fs.rmSync(caminhoImagem(r.n_url, cfg.localStaging, r.ext), { force: true }); } catch (_) {}
+    if (cfg.modo !== 'servidor') {
+      const paraUpload = catalogo.pendentesParaUpload();   // [{ n_url, ext }]
+      if (paraUpload.length > 0) {
+        await sincronizarFn(cfg);
+        catalogo.confirmarUpload(paraUpload.map(r => r.n_url));
+        registrarEvento(cfg, `${new Date().toISOString().slice(11,19)} FLUSH      enviadas ${paraUpload.length} imagens ao servidor`);
+        if (!opts.keepLocal) {
+          // Apaga só os arquivos confirmados deste snapshot; escritas concorrentes de
+          // outros workers (n_url fora do snapshot) são preservadas para o próximo flush.
+          for (const r of paraUpload) {
+            try { fs.rmSync(caminhoImagem(r.n_url, cfg.localStaging, r.ext), { force: true }); } catch (_) {}
+          }
         }
       }
     }
@@ -122,11 +123,11 @@ async function main() {
   const catalogo = abrirCatalogo(cfg.catalogPath);
   const { cmd, opts } = parseArgs(process.argv);
   try {
-    if (cmd === 'index') comandoIndex(cfg, catalogo);
-    else if (cmd === 'run') await comandoRun(cfg, catalogo, opts);
+    if (cmd === 'run') await comandoRun(cfg, catalogo, opts);
+    else if (cmd === 'index') await comandoIndex(cfg, catalogo);
     else if (cmd === 'status') console.log(catalogo.estatisticas());
     else if (cmd === 'flush') {
-      const fonte = criarFonte({ ssh: cfg.ssh, database: cfg.ch.database });
+      const fonte = criarFonte({ executor: criarExecutor(cfg), database: cfg.ch.database });
       await flush(cfg, catalogo, fonte, opts);
     } else {
       console.log('Comandos: index | run [--range A-B] [--concurrency N] [--keep-local] | status | flush');
