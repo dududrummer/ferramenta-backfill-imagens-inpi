@@ -17,19 +17,18 @@ test('salvarImagem grava no caminho sharded e retorna a extensão', () => {
   expect(fs.existsSync(dest)).toBe(true);
 });
 
-test('registrarEvento adiciona uma linha ao arquivo de log', () => {
+test('registrarEvento escreve a linha no stdout', () => {
   const { registrarEvento } = require('../src/runner');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ev-'));
-  const log = path.join(dir, 'eventos.log');
-  registrarEvento({ eventsLog: log }, 'linha 1');
-  registrarEvento({ eventsLog: log }, 'linha 2');
-  const conteudo = fs.readFileSync(log, 'utf8');
-  expect(conteudo).toBe('linha 1\nlinha 2\n');
-});
-
-test('registrarEvento sem eventsLog não quebra', () => {
-  const { registrarEvento } = require('../src/runner');
-  expect(() => registrarEvento({}, 'x')).not.toThrow();
+  const escritos = [];
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { escritos.push(s); return true; };
+  try {
+    registrarEvento({}, 'linha 1');
+    registrarEvento({}, 'linha 2');
+  } finally {
+    process.stdout.write = orig;
+  }
+  expect(escritos).toEqual(['linha 1\n', 'linha 2\n']);
 });
 
 test('talvezRotacionar rotaciona o IP após N requisições e zera o contador', async () => {

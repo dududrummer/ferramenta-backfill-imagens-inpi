@@ -53,7 +53,7 @@ async function comandoRun(cfg, catalogo, opts) {
   const processados = new Set(catalogo.nUrlsProcessados());
   console.log(`Varredura ${min}–${max}: pulando ${nominativos.size} nominativas + ${processados.size} já processados.`);
   console.log('Catálogo:', cfg.catalogPath);
-  console.log('Log de eventos (tail -f):', cfg.eventsLog);
+  console.log('Eventos: uma linha por imagem é impressa abaixo (stdout). Capture com  | tee run.log  e acompanhe com  tail -f run.log');
 
   const ctx = { catalogo, pool, cfg };
   let atual = min, tentadas = 0, baixadas = 0;

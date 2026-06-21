@@ -132,16 +132,16 @@ Para cada `n_url` da faixa que não esteja em nenhum dos dois conjuntos, a ferra
 
 ## Log de eventos em tempo real
 
-Ao iniciar `run`, o console imprime o caminho do arquivo de log:
+Os eventos por imagem (BAIXADA / SEM_IMAGEM / FALHOU / FLUSH) são impressos diretamente no **stdout** do processo — aparecem no mesmo terminal onde você rodou o `run`.
 
-```
-Log de eventos (tail -f): ./eventos.log
-```
-
-Acompanhe o progresso image-a-image em outro terminal:
+Para capturar e acompanhar em outro terminal ao mesmo tempo:
 
 ```bash
-tail -f ./eventos.log
+# Execução — grava tudo (stdout + stderr) em run.log e exibe no terminal
+node src/cli.js run 2>&1 | tee -a run.log
+
+# Em outro terminal — acompanhe em tempo real
+tail -f run.log
 ```
 
 Cada linha representa uma imagem processada:
@@ -152,8 +152,6 @@ Cada linha representa uma imagem processada:
 14:03:25 FALHOU     n_url=449554
 14:03:30 FLUSH      enviadas 2000 imagens ao servidor
 ```
-
-O arquivo é append-only (nunca truncado), seguro para leitura cross-process sem depender de SQLite WAL. O caminho padrão é ao lado do catálogo (`eventos.log`); pode ser sobrescrito via `EVENTS_LOG=` no `.env`.
 
 ---
 

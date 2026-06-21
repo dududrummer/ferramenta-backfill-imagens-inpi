@@ -8,8 +8,8 @@ function horaAgora() {
 }
 
 function registrarEvento(cfg, texto) {
-  if (!cfg || !cfg.eventsLog) return;
-  try { fs.appendFileSync(cfg.eventsLog, texto + '\n'); } catch (_) { /* log é best-effort */ }
+  // Escreve no stdout (aparece no terminal do run e no run.log via `tee`) — robusto no WSL.
+  process.stdout.write(texto + '\n');
 }
 
 // Rotaciona o IP do circuito de forma proativa a cada cfg.maxReqPorCircuito requisições
