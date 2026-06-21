@@ -20,7 +20,11 @@ for i in "${!S[@]}"; do
   sed -e "s|__SOCKS__|$socks|" -e "s|__CONTROL__|$control|" -e "s|__DATA__|$data|" \
     "$DIR/torrc.template" | tr -d '\r' > "$conf"
   echo "Subindo Tor SOCKS=$socks CONTROL=$control"
-  tor -f "$conf" > "$BASE/tor$socks.log" 2>&1 &
+  # setsid + </dev/null: desacopla do terminal (não morre ao fechar a aba).
+  # sleep entre cada um: evita o pico que derruba várias quando sobem juntas.
+  setsid tor -f "$conf" > "$BASE/tor$socks.log" 2>&1 < /dev/null &
+  sleep 2
 done
-echo "Aguardando bootstrap (10s)..."; sleep 10
-echo "Instâncias Tor em execução. Logs em $BASE/*.log"
+echo "Aguardando bootstrap..."; sleep 45
+vivos=$(pgrep -x tor | wc -l || true)
+echo "Instâncias Tor vivas: $vivos de ${#S[@]}. Logs em $BASE/*.log"
