@@ -38,25 +38,42 @@ async function comandoRun(cfg, catalogo, opts) {
   const concurrency = opts.concurrency || cfg.concurrency;
   const fonte = criarFonte({ ssh: cfg.ssh, database: cfg.ch.database });
   const pool = criarPool(cfg);
+  const FLOOR = 4145;
 
-  let min, max;
-  if (opts.range) { [min, max] = opts.range.split('-').map(Number); }
-  const candidatos = await fonte.candidatos(min, max);
-  const pendentes = filtrarPendentes(candidatos, catalogo);
-  console.log(`Não-nominativas: ${pendentes.length} a baixar (de ${candidatos.length} candidatas).`);
+  let min = FLOOR, max = null;
+  if (opts.range) {
+    const [a, b] = opts.range.split('-').map(Number);
+    if (!Number.isNaN(a)) min = Math.max(FLOOR, a);
+    if (!Number.isNaN(b)) max = b;
+  }
+  if (max == null) max = await fonte.maxNUrl();
+
+  console.log(`Carregando nominativas e já processados (faixa ${min}–${max})...`);
+  const nominativos = await fonte.nominativos(min, max);
+  const processados = new Set(catalogo.nUrlsProcessados());
+  console.log(`Varredura ${min}–${max}: pulando ${nominativos.size} nominativas + ${processados.size} já processados.`);
   console.log('Catálogo:', cfg.catalogPath);
   console.log('Log de eventos (tail -f):', cfg.eventsLog);
 
   const ctx = { catalogo, pool, cfg };
-  let i = 0, baixadas = 0;
+  let atual = min, tentadas = 0, baixadas = 0;
+  function proximo() {
+    while (atual <= max) {
+      const n = atual++;
+      if (nominativos.has(n) || processados.has(n)) continue;
+      return n;
+    }
+    return null;
+  }
   async function worker() {
-    while (i < pendentes.length) {
-      const candidato = pendentes[i++];
+    let n;
+    while ((n = proximo()) !== null) {
       const circ = pool.proximoCircuito();
-      const r = await processarUm(candidato, circ, ctx);
+      const r = await processarUm({ n_url: n }, circ, ctx);
+      tentadas++;
       if (r === 'baixada') baixadas++;
       if (baixadas > 0 && baixadas % cfg.rsyncBatch === 0) await flush(cfg, catalogo, fonte, opts);
-      if ((i % 500) === 0) console.log(`...${i}/${pendentes.length}`);
+      if (tentadas % 500 === 0) console.log(`...${tentadas} tentadas, ${baixadas} baixadas (n_url~${n})`);
     }
   }
   await Promise.all(Array.from({ length: concurrency }, worker));

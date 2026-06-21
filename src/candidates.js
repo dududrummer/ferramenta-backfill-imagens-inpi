@@ -3,13 +3,14 @@ const { execFile } = require('child_process');
 function construtorQueries(database) {
   const T = `${database}.marcas`;
   return {
-    // Marcas NÃO puramente nominativas (essas têm logo). Exclui só 'Nominativa' pura;
-    // apresentação em branco/desconhecida É incluída (tenta baixar mesmo assim).
-    // Dedup por n_url (MergeTree pode ter linhas repetidas); tem = 1 se qualquer linha já marca imagem.
-    naoNominativas(min, max) {
-      let w = "apresentacao != 'Nominativa' AND n_url > 0";
+    // n_urls que a tabela marca como puramente nominativa (não têm logo) — usados para PULAR.
+    nominativas(min, max) {
+      let w = "apresentacao = 'Nominativa'";
       if (min != null && max != null) w += ` AND n_url >= ${min} AND n_url <= ${max}`;
-      return `SELECT n_url, max(tem_imagem) AS tem FROM ${T} WHERE ${w} GROUP BY n_url ORDER BY n_url`;
+      return `SELECT n_url FROM ${T} WHERE ${w}`;
+    },
+    maxNUrl() {
+      return `SELECT max(n_url) FROM ${T}`;
     },
     updateTemImagem(nUrls) {
       return `ALTER TABLE ${T} UPDATE tem_imagem=1 WHERE n_url IN (${nUrls.join(',')})`;
@@ -25,7 +26,6 @@ function montarSshArgs(ssh) {
   return args;
 }
 
-// Roda um comando no servidor via ssh e resolve o stdout.
 function rodarRemoto(ssh, comando, opts = {}) {
   const execFn = opts._execFile || execFile;
   return new Promise((resolve, reject) => {
@@ -40,14 +40,22 @@ function rodarRemoto(ssh, comando, opts = {}) {
 function criarFonte({ ssh, database }, opts = {}) {
   const q = construtorQueries(database);
 
-  // Retorna [{ n_url, temImagem }] das marcas não-nominativas (opcionalmente numa faixa).
-  async function candidatos(min, max) {
-    const cmd = `clickhouse-client --database ${database} --query "${q.naoNominativas(min, max)}" --format TabSeparated`;
+  // Conjunto de n_urls nominativas (para pular). Opcionalmente restrito a uma faixa.
+  async function nominativos(min, max) {
+    const cmd = `clickhouse-client --database ${database} --query "${q.nominativas(min, max)}" --format TabSeparated`;
     const out = await rodarRemoto(ssh, cmd, opts);
-    return out.split('\n').map(s => s.trim()).filter(Boolean).map((linha) => {
-      const [n, tem] = linha.split('\t');
-      return { n_url: Number(n), temImagem: tem === '1' };
-    });
+    const set = new Set();
+    for (const linha of out.split('\n')) {
+      const t = linha.trim();
+      if (t) set.add(Number(t));
+    }
+    return set;
+  }
+
+  async function maxNUrl() {
+    const cmd = `clickhouse-client --database ${database} --query "${q.maxNUrl()}" --format TabSeparated`;
+    const out = await rodarRemoto(ssh, cmd, opts);
+    return Number(out.trim());
   }
 
   async function marcarTemImagem(nUrls, lote = 5000) {
@@ -58,7 +66,7 @@ function criarFonte({ ssh, database }, opts = {}) {
     }
   }
 
-  return { candidatos, marcarTemImagem };
+  return { nominativos, maxNUrl, marcarTemImagem };
 }
 
 module.exports = { construtorQueries, criarFonte, montarSshArgs };

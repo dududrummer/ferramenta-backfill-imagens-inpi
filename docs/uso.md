@@ -41,22 +41,29 @@ Indexados 42137 arquivos já existentes no servidor.
 
 ### `run`
 
-Busca no ClickHouse todas as marcas não-nominativas (`apresentacao != 'Nominativa'`), filtra o que o catálogo local já registrou como processado, e baixa as imagens restantes em paralelo via pool de circuitos Tor. Após cada lote de `RSYNC_BATCH` downloads, executa um flush (rsync + marcação no DB).
+Varre todos os `n_url` de 4145 até `MAX` (o maior `n_url` em `marcas`), tentando baixar a imagem de cada um. São pulados:
 
-A seleção inclui todos os valores de `apresentacao` que implicam logo: Figurativa, Mista, Tridimensional, e combinações como "Nominativa e Tridimensional". Apenas `Nominativa` pura (sem logo) é excluída.
+- `n_url`s que o ClickHouse marca como `apresentacao='Nominativa'` (não têm logo);
+- `n_url`s já presentes no catálogo local (processados com sucesso ou marcados como sem imagem).
+
+Isso captura imagens de registros com `n_url` que existem no INPI mas ainda não estão na tabela `marcas` (buracos de importação). Após cada lote de `RSYNC_BATCH` downloads, executa um flush (rsync ao servidor remoto).
+
+Os conjuntos de nominativas e de já-processados são carregados uma vez em memória (Sets) e a faixa é percorrida em stream — sem construir um array gigante.
 
 Registros já presentes no catálogo local são automaticamente pulados — basta re-executar o comando após uma interrupção.
+
+**Marcação `tem_imagem` no ClickHouse:** desligada por padrão (cada UPDATE varre a tabela toda porque `n_url` não é a chave de ordenação). Para habilitar: `MARCAR_TEM_IMAGEM=1` no `.env`.
 
 **Opções:**
 
 | Flag | Obrigatória | Descrição |
 |---|---|---|
-| `--range A-B` | Não | Restringe os candidatos ao intervalo `n_url >= A AND n_url <= B` |
+| `--range A-B` | Não | Restringe a varredura ao intervalo `n_url >= A AND n_url <= B` (útil para chunking em paralelo ou para limitar uso de memória) |
 | `--concurrency N` | Não | Sobrescreve `CONCURRENCY` do `.env` para esta execução |
 | `--keep-local` | Não | Não apaga o diretório de staging local após o rsync |
 
 ```bash
-# Baixar todas as marcas não-nominativas ainda ausentes
+# Varrer toda a faixa 4145→MAX (padrão)
 node src/cli.js run
 
 # Restringir a um range de n_url (útil para execução paralela WSL + Colab)
@@ -106,20 +113,18 @@ node src/cli.js flush --keep-local
 
 ## Critério de seleção
 
-A ferramenta consulta o ClickHouse via `clickhouse-client` por SSH e seleciona marcas não-nominativas:
+A ferramenta percorre todos os `n_url` de 4145 até `max(n_url)` da tabela `marcas`. Antes de iniciar a varredura, carrega dois Sets em memória via SSH:
 
-```sql
-SELECT n_url, max(tem_imagem) AS tem
-FROM neopi.marcas
-WHERE apresentacao != 'Nominativa' AND apresentacao != '' AND n_url > 0
-GROUP BY n_url
-ORDER BY n_url
-```
+1. **Nominativas** — `n_url`s onde `apresentacao = 'Nominativa'` (não têm logo; pulados):
+   ```sql
+   SELECT n_url FROM neopi.marcas WHERE apresentacao = 'Nominativa'
+   ```
 
-A coluna `tem_imagem` retornada é usada para decidir se o registro precisa ser atualizado no banco após o download:
+2. **Já processados** — todos os `n_url` registrados no catálogo local SQLite.
 
-- Se `tem_imagem` já era `1` → a ferramenta apenas salva o arquivo (o banco já está correto).
-- Se `tem_imagem` era `0` → após baixar a imagem, a ferramenta executa `ALTER TABLE marcas UPDATE tem_imagem=1` para o `n_url` correspondente.
+Para cada `n_url` da faixa que não esteja em nenhum dos dois conjuntos, a ferramenta tenta baixar a imagem do INPI. Isso captura registros que existem no INPI mas cujo `n_url` ainda não foi importado para a tabela `marcas` (buracos).
+
+**Marcação `tem_imagem`:** controlada pela variável `MARCAR_TEM_IMAGEM`. Quando `=1`, após cada download bem-sucedido a ferramenta executa `ALTER TABLE marcas UPDATE tem_imagem=1` para o `n_url` correspondente. O padrão é `0` (desligado) porque `n_url` não é a chave de ordenação da tabela, e cada UPDATE varre a tabela inteira — pesado em produção.
 
 ---
 
@@ -152,7 +157,7 @@ O arquivo é append-only (nunca truncado), seguro para leitura cross-process sem
 
 ## Resumir após interrupção
 
-Basta re-executar o mesmo comando. O catálogo local SQLite registra cada `n_url` processado; o filtro `filtrarPendentes` exclui automaticamente tudo que já tem `status=baixada` ou `status=sem_imagem`. Registros com `status=falhou` serão retentados.
+Basta re-executar o mesmo comando. O catálogo local SQLite registra cada `n_url` processado; o Set de já-processados é carregado no início da varredura e exclui automaticamente tudo que já tem qualquer status registrado. Registros com `status=falhou` serão retentados (não estão nos conjuntos de skip).
 
 ```bash
 # Interrompido? Só rodar de novo:
@@ -180,6 +185,7 @@ Cada ambiente tem seu próprio catálogo SQLite local (`CATALOG_PATH`). Ambos fa
 Para descobrir o intervalo total de `n_url` a cobrir, consulte o ClickHouse antes de começar:
 
 ```sql
-SELECT min(n_url), max(n_url) FROM neopi.marcas
-WHERE apresentacao != 'Nominativa' AND apresentacao != '' AND n_url > 0
+SELECT max(n_url) FROM neopi.marcas
 ```
+
+O `min` fixo é 4145 (FLOOR da ferramenta). O `max` é o maior `n_url` já importado; a ferramenta busca automaticamente se `--range` não for especificado.

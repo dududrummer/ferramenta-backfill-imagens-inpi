@@ -50,3 +50,12 @@ test('estatisticas conta por status', () => {
   expect(c.estatisticas()).toMatchObject({ baixada: 2, sem_imagem: 1 });
   c.fechar();
 });
+
+test('nUrlsProcessados lista todos os n_url do catálogo', () => {
+  const c = novo();
+  c.marcar(7, 'baixada', {});
+  c.marcar(8, 'sem_imagem', {});
+  c.marcar(9, 'falhou', {});
+  expect(c.nUrlsProcessados().sort((a, b) => a - b)).toEqual([7, 8, 9]);
+  c.fechar();
+});

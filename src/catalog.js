@@ -74,6 +74,10 @@ function abrirCatalogo(caminho) {
   });
   function confirmarMarcacaoDb(nUrls) { confirmarMarcacaoTx(nUrls); }
 
+  function nUrlsProcessados() {
+    return db.prepare('SELECT n_url FROM status').all().map(r => r.n_url);
+  }
+
   function estatisticas() {
     const rows = db.prepare('SELECT status, COUNT(*) c FROM status GROUP BY status').all();
     const out = {};
@@ -86,7 +90,7 @@ function abrirCatalogo(caminho) {
   return {
     marcar, obterStatus, jaProcessado, inserirExistentes,
     pendentesParaUpload, pendentesParaMarcarDb,
-    confirmarUpload, confirmarMarcacaoDb, estatisticas, fechar,
+    confirmarUpload, confirmarMarcacaoDb, nUrlsProcessados, estatisticas, fechar,
   };
 }
 

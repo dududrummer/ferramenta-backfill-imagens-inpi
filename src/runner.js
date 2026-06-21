@@ -46,7 +46,7 @@ async function processarUm(candidato, circuito, ctx) {
     if (cls.resultado === 'baixada') {
       salvarImagem(nUrl, cls.buffer, cls.ext, cfg.localStaging);
       catalogo.marcar(nUrl, 'baixada', {
-        ext: cls.ext, uploaded: 0, marcar_db: candidato.temImagem ? 0 : 1, tentativas,
+        ext: cls.ext, uploaded: 0, marcar_db: cfg.marcarTemImagem ? 1 : 0, tentativas,
       });
       registrarEvento(cfg, `${horaAgora()} BAIXADA    n_url=${nUrl} ext=${cls.ext}`);
       return 'baixada';
