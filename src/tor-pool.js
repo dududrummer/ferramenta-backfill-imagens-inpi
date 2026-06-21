@@ -10,7 +10,12 @@ function criarPool(opts) {
 
   const circuitos = torSocksPorts.map((socksPort, i) => {
     const user = `slot${i + 1}`;
-    const agent = new SocksProxyAgent(`socks5h://${user}:x@${torHost}:${socksPort}`);
+    const agent = new SocksProxyAgent(`socks5h://${user}:x@${torHost}:${socksPort}`, {
+      keepAlive: true,
+      keepAliveMsecs: 30000,
+      maxSockets: 64,
+      timeout: 60000,
+    });
     return { id: i, socksPort, controlPort: torControlPorts[i], agent, ultimaRotacao: -Infinity, jar: new CookieJar(), warm: false };
   });
 
