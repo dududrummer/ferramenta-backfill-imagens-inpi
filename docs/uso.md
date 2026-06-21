@@ -4,19 +4,28 @@
 
 ```
 1. Subir instâncias Tor
-2. node src/cli.js index          # (uma vez) indexar o que já existe
+2. node src/cli.js index          # (uma vez) indexar o que já existe no servidor
 3. node src/cli.js run            # baixar imagens de marcas não-nominativas ainda ausentes
 4. node src/cli.js status         # acompanhar progresso
+5. (periodicamente) reconciliação de tem_imagem no ClickHouse
 ```
 
 ---
 
-## Pré-condições para qualquer comando
+## Pré-condição: Tor em execução
 
-1. **Instâncias Tor em execução** (só necessário para `run`):
-   ```bash
-   bash tor/start-tor.sh
-   ```
+Antes de qualquer `run`, as instâncias Tor precisam estar no ar:
+
+```bash
+bash tor/start-tor.sh "9050,9052,9054,9056" "9051,9053,9055,9057"
+```
+
+Confirme:
+```bash
+pgrep -x tor | wc -l   # deve mostrar 4
+```
+
+O Tor é **local à máquina que roda a ferramenta** — seja o servidor (`MODO=servidor`) ou a máquina local (`MODO=remoto`). Ele baixa as imagens do INPI via múltiplos circuitos, rotacionando o IP a cada ~18 requisições para evitar bloqueio.
 
 ---
 
@@ -24,9 +33,7 @@
 
 ### `index`
 
-Conecta ao servidor via SSH, executa `find <REMOTE_IMAGE_DIR> -type f -name '*.*'` e registra no catálogo local todos os arquivos que já existem no servidor como `status=baixada, uploaded=1`. Isso evita que a ferramenta tente baixar e fazer upload de arquivos que já estão lá.
-
-**Execute uma vez antes do primeiro `run`, e novamente se houver alterações externas no diretório remoto.**
+Lista os arquivos que já existem no servidor (via `find` local em `MODO=servidor`, ou via SSH em `MODO=remoto`) e registra no catálogo local. Execute uma vez antes do primeiro `run`.
 
 ```bash
 node src/cli.js index
@@ -34,122 +41,29 @@ node src/cli.js index
 
 Saída esperada:
 ```
-Indexados 42137 arquivos já existentes no servidor.
+Indexados 42137 arquivos já existentes.
 ```
 
 ---
 
 ### `run`
 
-Varre todos os `n_url` de 4145 até `MAX` (o maior `n_url` em `marcas`), tentando baixar a imagem de cada um. São pulados:
+Varre todos os `n_url` de **4145** até **MAX** (o maior `n_url` em `marcas`), tentando baixar a imagem de cada um. São pulados:
 
-- `n_url`s que o ClickHouse marca como `apresentacao='Nominativa'` (não têm logo);
-- `n_url`s cujo arquivo já existe **no servidor** (verificado via SSH `find` no início de cada execução — verdade absoluta);
+- `n_url`s com `apresentacao = 'Nominativa'` (não têm logotipo);
+- `n_url`s cujo arquivo já existe no servidor (verificado via `find` no início de cada `run`);
 - `n_url`s marcados como `sem_imagem` no catálogo local.
 
-Qualquer imagem que foi baixada localmente mas não chegou ao servidor (ex.: execução morta antes do rsync) é automaticamente re-baixada e re-enviada, porque a fonte de verdade é o servidor, não o catálogo local. O comando `index` continua disponível para popular o catálogo manualmente, mas o `run` já faz esse levantamento via SSH no início.
-
-Isso captura imagens de registros com `n_url` que existem no INPI mas ainda não estão na tabela `marcas` (buracos de importação). Após cada lote de `RSYNC_BATCH` downloads, executa um flush (rsync ao servidor remoto).
-
-Os conjuntos de nominativas e de já-processados são carregados uma vez em memória (Sets) e a faixa é percorrida em stream — sem construir um array gigante.
-
-Registros já presentes no catálogo local são automaticamente pulados — basta re-executar o comando após uma interrupção.
-
-**Rotação proativa de IP:** cada circuito rotaciona o IP de saída automaticamente a cada ~18 requisições (`MAX_REQ_POR_CIRCUITO`) para ficar abaixo do limite do INPI (~20/IP), evitando bloqueios; a sessão só é re-aquecida se o INPI a invalidar (302).
-
-**Marcação `tem_imagem` no ClickHouse:** desligada por padrão (cada UPDATE varre a tabela toda porque `n_url` não é a chave de ordenação). Para habilitar: `MARCAR_TEM_IMAGEM=1` no `.env`.
-
-**Opções:**
-
-| Flag | Obrigatória | Descrição |
-|---|---|---|
-| `--range A-B` | Não | Restringe a varredura ao intervalo `n_url >= A AND n_url <= B` (útil para chunking em paralelo ou para limitar uso de memória) |
-| `--concurrency N` | Não | Sobrescreve `CONCURRENCY` do `.env` para esta execução |
-| `--keep-local` | Não | Não apaga o diretório de staging local após o rsync |
+**Cada imagem gera uma linha no stdout** (BAIXADA / SEM_IMAGEM / FALHOU / FLUSH). Capture com `tee` e acompanhe em tempo real:
 
 ```bash
-# Varrer toda a faixa 4145→MAX (padrão)
-node src/cli.js run
-
-# Restringir a um range de n_url (útil para execução paralela WSL + Colab)
-node src/cli.js run --range 1-5000000
-
-# Com concorrência reduzida e mantendo arquivos locais
-node src/cli.js run --range 1-5000000 --concurrency 4 --keep-local
-```
-
----
-
-### `status`
-
-Exibe as estatísticas do catálogo local (contagem por status). Não acessa o servidor nem o ClickHouse — é instantâneo.
-
-```bash
-node src/cli.js status
-```
-
-Saída esperada (exemplo):
-```json
-{ "baixada": 38500, "sem_imagem": 1200, "falhou": 47 }
-```
-
-**Interpretando a saída:**
-
-| Status | Significado |
-|---|---|
-| `baixada` | Imagem obtida com sucesso (pode ainda estar pendente de upload ou marcação no DB) |
-| `sem_imagem` | O INPI não tem imagem para esse `n_url` (404 real ou placeholder identificado) |
-| `falhou` | Esgotou as `MAX_TENTATIVAS` tentativas sem resultado definitivo; será retentado em próximas execuções se removido do catálogo |
-
----
-
-### `flush`
-
-Executa manualmente o flush: faz rsync das imagens pendentes de upload e atualiza `tem_imagem=1` no ClickHouse para os registros pendentes de marcação. Útil para forçar a sincronização sem rodar um `run` completo.
-
-```bash
-node src/cli.js flush
-
-# Manter arquivos locais
-node src/cli.js flush --keep-local
-```
-
----
-
-## Critério de seleção
-
-A ferramenta percorre todos os `n_url` de 4145 até `max(n_url)` da tabela `marcas`. Antes de iniciar a varredura, carrega dois Sets em memória via SSH:
-
-1. **Nominativas** — `n_url`s onde `apresentacao = 'Nominativa'` (não têm logo; pulados):
-   ```sql
-   SELECT n_url FROM neopi.marcas WHERE apresentacao = 'Nominativa'
-   ```
-
-2. **Já no servidor** — `n_url`s cujo arquivo já existe no servidor (consultado via SSH `find` no início do `run`; fonte de verdade absoluta).
-3. **Sem imagem** — `n_url`s marcados como `sem_imagem` no catálogo local SQLite (o INPI confirmou ausência de imagem).
-
-Para cada `n_url` da faixa que não esteja em nenhum dos dois conjuntos, a ferramenta tenta baixar a imagem do INPI. Isso captura registros que existem no INPI mas cujo `n_url` ainda não foi importado para a tabela `marcas` (buracos).
-
-**Marcação `tem_imagem`:** controlada pela variável `MARCAR_TEM_IMAGEM`. Quando `=1`, após cada download bem-sucedido a ferramenta executa `ALTER TABLE marcas UPDATE tem_imagem=1` para o `n_url` correspondente. O padrão é `0` (desligado) porque `n_url` não é a chave de ordenação da tabela, e cada UPDATE varre a tabela inteira — pesado em produção.
-
----
-
-## Log de eventos em tempo real
-
-Os eventos por imagem (BAIXADA / SEM_IMAGEM / FALHOU / FLUSH) são impressos diretamente no **stdout** do processo — aparecem no mesmo terminal onde você rodou o `run`.
-
-Para capturar e acompanhar em outro terminal ao mesmo tempo:
-
-```bash
-# Execução — grava tudo (stdout + stderr) em run.log e exibe no terminal
 node src/cli.js run 2>&1 | tee -a run.log
 
-# Em outro terminal — acompanhe em tempo real
+# Em outro terminal:
 tail -f run.log
 ```
 
-Cada linha representa uma imagem processada:
-
+Exemplo de saída:
 ```
 14:03:22 BAIXADA    n_url=449552 ext=jpg
 14:03:23 SEM_IMAGEM n_url=449553
@@ -157,39 +71,145 @@ Cada linha representa uma imagem processada:
 14:03:30 FLUSH      enviadas 2000 imagens ao servidor
 ```
 
----
+A cada `RSYNC_BATCH` downloads (`MODO=remoto`), as imagens são enviadas ao servidor por rsync. Em `MODO=servidor` as imagens já vão direto para `IMAGE_DIR`.
 
-## Resumir após interrupção
+**Opções:**
 
-Basta re-executar o mesmo comando. No início de cada `run`, a ferramenta faz um SSH `find` no servidor para saber quais arquivos realmente chegaram lá, e combina isso com os `n_url` marcados como `sem_imagem` no catálogo local para montar o conjunto de skip. Qualquer `n_url` com `status=baixada` mas sem arquivo no servidor (ex.: processo morto antes do rsync) é automaticamente re-tentado. Registros com `status=falhou` também são retentados (não estão nos conjuntos de skip).
+| Flag | Descrição |
+|---|---|
+| `--range A-B` | Restringe a varredura ao intervalo `n_url >= A AND n_url <= B` |
+| `--concurrency N` | Sobrescreve `CONCURRENCY` do `.env` para esta execução |
+| `--keep-local` | Não apaga o staging local após o rsync (`MODO=remoto`) |
 
 ```bash
-# Interrompido? Só rodar de novo:
+# Toda a faixa 4145 → MAX (padrão)
 node src/cli.js run
+
+# Range específico (útil para dividir entre máquinas — veja seção abaixo)
+node src/cli.js run --range 4145-3000000
+
+# Com concorrência reduzida
+node src/cli.js run --range 4145-3000000 --concurrency 4
+```
+
+**Retomar após interrupção:** basta re-executar o mesmo comando. O catálogo SQLite local preserva o estado; o `run` faz um novo `find` no servidor no início e constrói o conjunto de skip atualizado.
+
+---
+
+### `status`
+
+Exibe as estatísticas do catálogo local. Não acessa o servidor nem o ClickHouse — é instantâneo.
+
+```bash
+node src/cli.js status
+```
+
+Saída esperada:
+```json
+{ "baixada": 38500, "sem_imagem": 1200, "falhou": 47 }
+```
+
+| Status | Significado |
+|---|---|
+| `baixada` | Imagem obtida com sucesso |
+| `sem_imagem` | O INPI não tem imagem para esse `n_url` (404 real ou placeholder) |
+| `falhou` | Esgotou as `MAX_TENTATIVAS` tentativas; será retentado em próximas execuções |
+
+---
+
+### `flush`
+
+Executa manualmente o rsync das imagens pendentes de upload (apenas `MODO=remoto`). Útil para forçar a sincronização sem rodar um `run` completo.
+
+```bash
+node src/cli.js flush
+
+# Manter arquivos no staging local após o rsync
+node src/cli.js flush --keep-local
 ```
 
 ---
 
-## Execução paralela: WSL + Colab
+## Dividir o trabalho entre máquinas com `--range`
 
-Para acelerar o processamento de grandes volumes, é possível rodar o WSL e o Colab em simultâneo. Cada ambiente deve processar um range disjunto de `n_url`:
+O `--range A-B` limita a faixa de `n_url` processada por cada instância. Use isso para paralelizar o backfill entre o servidor, o WSL e/ou o Colab — cada máquina trabalha em um segmento disjunto.
 
-**WSL:**
+**Exemplo prático** (MAX = 6.700.000):
+
+| Máquina | Comando |
+|---|---|
+| Servidor (MODO=servidor) | `node src/cli.js run --range 4145-3000000` |
+| WSL local (MODO=remoto) | `node src/cli.js run --range 3000001-5000000` |
+| Colab (MODO=remoto) | `node src/cli.js run --range 5000001-6700000` |
+
+Cada máquina tem seu **próprio catálogo SQLite local** (`CATALOG_PATH`). Todas escrevem imagens no mesmo diretório do servidor (direto via `IMAGE_DIR` no modo servidor, ou via rsync no modo remoto) — isso é seguro porque os ranges são disjuntos.
+
+Para descobrir o MAX atual antes de distribuir as faixas:
 ```bash
-node src/cli.js run --range 1-5000000
+# No servidor (ou via SSH)
+clickhouse-client --query "SELECT max(n_url) FROM neopi.marcas"
 ```
 
-**Colab:**
+O FLOOR fixo da ferramenta é 4145 — não use valores menores que isso no `--range`.
+
+---
+
+## Acompanhar progresso
+
 ```bash
-node src/cli.js run --range 5000001-10000000
+# Contagem de linhas no log (imagens tentadas)
+wc -l run.log
+
+# Contagem de imagens no servidor (MODO=servidor ou via SSH)
+find /var/neopi/bancoImagensINPI -type f | wc -l
+
+# Via SSH (MODO=remoto)
+ssh deploy@seu.servidor.com "find /var/neopi/bancoImagensINPI -type f | wc -l"
+
+# Status do catálogo local
+node src/cli.js status
 ```
 
-Cada ambiente tem seu próprio catálogo SQLite local (`CATALOG_PATH`). Ambos fazem rsync para o mesmo diretório remoto e ambos atualizam o ClickHouse — isso é seguro porque os ranges são disjuntos.
+---
 
-Para descobrir o intervalo total de `n_url` a cobrir, consulte o ClickHouse antes de começar:
+## Reconciliação do `tem_imagem` no ClickHouse
 
-```sql
-SELECT max(n_url) FROM neopi.marcas
+Por padrão, `MARCAR_TEM_IMAGEM=0` — o campo `tem_imagem` na tabela `marcas` **não é atualizado durante o download**. Isso porque `n_url` não é a sort key da tabela, e cada `UPDATE` varre a tabela inteira, o que é muito pesado em produção.
+
+A abordagem recomendada é uma **reconciliação periódica**, executada diretamente no servidor de produção. O processo gera a lista de arquivos presentes, insere numa tabela temporária em memória e faz um único `ALTER ... UPDATE` em lote:
+
+```bash
+# Execute no servidor de produção (como o usuário que tem acesso ao clickhouse-client)
+
+# 1. Listar todos os n_url que têm arquivo (extraindo o nome sem extensão)
+find /var/neopi/bancoImagensINPI -type f -printf '%f\n' | sed 's/\.[^.]*$//' > /tmp/imgs.tsv
+
+# 2. Criar e limpar a tabela temporária em memória
+clickhouse-client --query "CREATE TABLE IF NOT EXISTS neopi.imgs_tmp (n_url UInt32) ENGINE=Memory"
+clickhouse-client --query "TRUNCATE TABLE neopi.imgs_tmp"
+
+# 3. Inserir os n_url presentes
+clickhouse-client --query "INSERT INTO neopi.imgs_tmp FORMAT TSV" < /tmp/imgs.tsv
+
+# 4. Atualizar tem_imagem=1 em lote (aguarda a mutação completar)
+clickhouse-client --query "ALTER TABLE neopi.marcas UPDATE tem_imagem=1 WHERE tem_imagem=0 AND n_url IN (SELECT n_url FROM neopi.imgs_tmp) SETTINGS mutations_sync=1"
+
+# 5. Limpar
+clickhouse-client --query "DROP TABLE neopi.imgs_tmp"
 ```
 
-O `min` fixo é 4145 (FLOOR da ferramenta). O `max` é o maior `n_url` já importado; a ferramenta busca automaticamente se `--range` não for especificado.
+Execute este bloco de tempos em tempos durante o backfill e ao final. O `mutations_sync=1` garante que o comando só retorna quando a mutação terminou.
+
+> Se preferir o update inline a cada download, defina `MARCAR_TEM_IMAGEM=1` no `.env` — mas esteja ciente do impacto de performance em produção.
+
+---
+
+## Critério de seleção
+
+A ferramenta percorre todos os `n_url` de 4145 até `max(n_url)` da tabela `marcas`. Antes de iniciar a varredura, carrega em memória:
+
+1. **Nominativas** — `n_url`s onde `apresentacao = 'Nominativa'` (não têm logotipo; pulados).
+2. **Já no servidor** — `n_url`s cujo arquivo já existe (via `find` local em `MODO=servidor`, ou via SSH em `MODO=remoto`). Fonte de verdade absoluta.
+3. **Sem imagem** — `n_url`s marcados como `sem_imagem` no catálogo local SQLite (INPI confirmou ausência).
+
+Para cada `n_url` da faixa que não esteja em nenhum desses conjuntos, a ferramenta tenta baixar a imagem. Isso captura inclusive registros cujo `n_url` existe no INPI mas ainda não foi importado para `marcas` (buracos de importação).

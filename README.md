@@ -1,45 +1,48 @@
 # ferramenta-backfill-imagens
 
-Ferramenta CLI standalone para backfill em massa das imagens de marcas do INPI no projeto NEOPI. Consulta o ClickHouse executando `clickhouse-client` no servidor via SSH (sem túnel), baixa cada imagem via múltiplos circuitos Tor (rotação de IP automática), armazena localmente em staging, faz upload por `rsync` via SSH para o servidor e atualiza o campo `tem_imagem` no banco — tudo de forma retomável, sem alterar o schema do banco de dados da aplicação.
+Ferramenta CLI standalone para backfill em massa das imagens de marcas do INPI no projeto NEOPI. Baixa imagens via múltiplos circuitos Tor (rotação automática de IP), mantém estado retomável em SQLite e suporta dois modos de execução: rodando **no próprio servidor** (gravação direta) ou rodando em **outra máquina** (WSL/Colab/Linux), com rsync para o servidor via SSH. O trabalho pode ser dividido por faixas de `n_url` entre múltiplas máquinas rodando em paralelo.
 
-## Pré-requisitos
+## Dois modos de execução
 
-- Node.js 20+
-- `tor`, `rsync`, `openssh-client` instalados na máquina local
-- Acesso SSH ao servidor de produção (o servidor já tem `clickhouse-client` instalado)
+- **`MODO=servidor`**: roda no próprio servidor de produção. Executa `clickhouse-client` e `find` localmente, grava as imagens direto no `IMAGE_DIR`. Sem rsync nem SSH para operar.
+- **`MODO=remoto`** (padrão): roda em outra máquina (WSL, Colab, Linux local). Acessa o ClickHouse e lista arquivos via SSH; imagens vão para um staging local e sobem por rsync. Requer `SSH_HOST`, `SSH_USER` e `SSH_KEY`.
 
-## Instalação
+Em ambos os modos, as imagens são baixadas do INPI via **Tor** (vários circuitos), com aquecimento de sessão (cookies) e rotação proativa de IP a cada ~18 requisições.
+
+## Instalação rápida
 
 ```bash
 git clone <url-do-repositorio> ferramenta-backfill-imagens
 cd ferramenta-backfill-imagens
 npm install
 cp .env.example .env
-# edite .env com suas credenciais e configurações
+# edite .env com MODO, IMAGE_DIR/REMOTE_IMAGE_DIR, SSH_*, CH_DATABASE, TOR_*
 ```
 
 ## Uso rápido
 
 ```bash
-# 1. Subir as instâncias Tor
-bash tor/start-tor.sh
+# 1. Subir instâncias Tor (locais à máquina que roda a ferramenta)
+bash tor/start-tor.sh "9050,9052,9054,9056" "9051,9053,9055,9057"
 
-# 2. Indexar arquivos que já existem no servidor (só na primeira vez)
+# 2. Indexar o que já existe no servidor (só na primeira vez)
 node src/cli.js index
 
-# 3. Rodar o backfill — baixa imagens de todas as marcas não-nominativas (apresentacao != 'Nominativa')
-node src/cli.js run
+# 3. Rodar o backfill
+node src/cli.js run 2>&1 | tee run.log
 
-# 4. Checar progresso a qualquer momento
+# 4. Dividir o trabalho entre máquinas (ranges disjuntos)
+node src/cli.js run --range 4145-3000000      # máquina A
+node src/cli.js run --range 3000001-6700000   # máquina B
+
+# 5. Checar progresso
 node src/cli.js status
+tail -f run.log
 ```
-
-Resumir após interrupção: basta re-executar o mesmo comando — o catálogo local SQLite mantém o estado e pula o que já foi processado.
 
 ## Documentação
 
-- [Instalação detalhada (WSL e Colab)](docs/instalacao.md)
-- [Configuração — variáveis de ambiente](docs/configuracao.md)
-- [Uso — comandos e fluxo de operação](docs/uso.md)
+- [Instalação detalhada e configuração por modo](docs/instalacao.md)
+- [Uso — comandos, divisão por faixas e reconciliação de tem_imagem](docs/uso.md)
 - [Arquitetura e estrutura do código](docs/arquitetura.md)
 - [Tor e NEWNYM — guia completo](docs/tor-e-newnym.md)
