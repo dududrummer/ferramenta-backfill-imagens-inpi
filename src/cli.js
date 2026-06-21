@@ -6,7 +6,7 @@ const { abrirCatalogo } = require('./catalog');
 const { criarPool } = require('./tor-pool');
 const { criarFonte } = require('./candidates');
 const { sincronizar } = require('./uploader');
-const { filtrarPendentes, processarUm } = require('./runner');
+const { filtrarPendentes, processarUm, registrarEvento } = require('./runner');
 const { nUrlDeCaminho, caminhoImagem } = require('./sharding');
 
 function parseArgs(argv) {
@@ -44,6 +44,8 @@ async function comandoRun(cfg, catalogo, opts) {
   const candidatos = await fonte.candidatos(min, max);
   const pendentes = filtrarPendentes(candidatos, catalogo);
   console.log(`Não-nominativas: ${pendentes.length} a baixar (de ${candidatos.length} candidatas).`);
+  console.log('Catálogo:', cfg.catalogPath);
+  console.log('Log de eventos (tail -f):', cfg.eventsLog);
 
   const ctx = { catalogo, pool, cfg };
   let i = 0, baixadas = 0;
@@ -72,6 +74,7 @@ async function flush(cfg, catalogo, fonte, opts = {}) {
     if (paraUpload.length > 0) {
       await sincronizarFn(cfg);
       catalogo.confirmarUpload(paraUpload.map(r => r.n_url));
+      registrarEvento(cfg, `${new Date().toISOString().slice(11,19)} FLUSH      enviadas ${paraUpload.length} imagens ao servidor`);
       if (!opts.keepLocal) {
         // Apaga só os arquivos confirmados deste snapshot; escritas concorrentes de
         // outros workers (n_url fora do snapshot) são preservadas para o próximo flush.

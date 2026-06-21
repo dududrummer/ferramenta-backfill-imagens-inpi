@@ -3,6 +3,15 @@ const { caminhoImagem, dirImagem } = require('./sharding');
 const { baixarBuffer, classificarResultado } = require('./downloader');
 const { warmSession } = require('./http-session');
 
+function horaAgora() {
+  return new Date().toISOString().slice(11, 19); // HH:MM:SS (UTC)
+}
+
+function registrarEvento(cfg, texto) {
+  if (!cfg || !cfg.eventsLog) return;
+  try { fs.appendFileSync(cfg.eventsLog, texto + '\n'); } catch (_) { /* log é best-effort */ }
+}
+
 function filtrarPendentes(candidatos, catalogo) {
   return candidatos.filter(c => !catalogo.jaProcessado(c.n_url));
 }
@@ -39,10 +48,12 @@ async function processarUm(candidato, circuito, ctx) {
       catalogo.marcar(nUrl, 'baixada', {
         ext: cls.ext, uploaded: 0, marcar_db: candidato.temImagem ? 0 : 1, tentativas,
       });
+      registrarEvento(cfg, `${horaAgora()} BAIXADA    n_url=${nUrl} ext=${cls.ext}`);
       return 'baixada';
     }
     if (cls.resultado === 'sem_imagem') {
       catalogo.marcar(nUrl, 'sem_imagem', { tentativas });
+      registrarEvento(cfg, `${horaAgora()} SEM_IMAGEM n_url=${nUrl}`);
       return 'sem_imagem';
     }
     if (cls.resultado === 'sessao') {
@@ -58,7 +69,8 @@ async function processarUm(candidato, circuito, ctx) {
     await new Promise(r => setTimeout(r, 1000 * tentativas));   // erro transitório
   }
   catalogo.marcar(nUrl, 'falhou', { tentativas, erro: 'maxTentativas' });
+  registrarEvento(cfg, `${horaAgora()} FALHOU     n_url=${nUrl}`);
   return 'falhou';
 }
 
-module.exports = { filtrarPendentes, salvarImagem, processarUm };
+module.exports = { filtrarPendentes, salvarImagem, processarUm, registrarEvento, horaAgora };

@@ -1,4 +1,5 @@
 require('dotenv').config();
+const path = require('path');
 
 function parsePortas(s) {
   return String(s || '').split(',').map(p => parseInt(p.trim(), 10)).filter(p => p > 0);
@@ -40,6 +41,7 @@ function carregarConfig(env = process.env) {
     maxTentativas: parseInt(env.MAX_TENTATIVAS || '3', 10),
     localStaging: env.LOCAL_STAGING || './staging',
     catalogPath: env.CATALOG_PATH || './catalogo.sqlite',
+    eventsLog: env.EVENTS_LOG || path.join(path.dirname(env.CATALOG_PATH || './catalogo.sqlite'), 'eventos.log'),
     rsyncBatch: parseInt(env.RSYNC_BATCH || '2000', 10),
     chUpdateBatch: parseInt(env.CH_UPDATE_BATCH || '5000', 10),
     placeholderHashes: parsePortasComoTexto(env.PLACEHOLDER_HASHES),

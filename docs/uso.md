@@ -123,6 +123,33 @@ A coluna `tem_imagem` retornada é usada para decidir se o registro precisa ser 
 
 ---
 
+## Log de eventos em tempo real
+
+Ao iniciar `run`, o console imprime o caminho do arquivo de log:
+
+```
+Log de eventos (tail -f): ./eventos.log
+```
+
+Acompanhe o progresso image-a-image em outro terminal:
+
+```bash
+tail -f ./eventos.log
+```
+
+Cada linha representa uma imagem processada:
+
+```
+14:03:22 BAIXADA    n_url=449552 ext=jpg
+14:03:23 SEM_IMAGEM n_url=449553
+14:03:25 FALHOU     n_url=449554
+14:03:30 FLUSH      enviadas 2000 imagens ao servidor
+```
+
+O arquivo é append-only (nunca truncado), seguro para leitura cross-process sem depender de SQLite WAL. O caminho padrão é ao lado do catálogo (`eventos.log`); pode ser sobrescrito via `EVENTS_LOG=` no `.env`.
+
+---
+
 ## Resumir após interrupção
 
 Basta re-executar o mesmo comando. O catálogo local SQLite registra cada `n_url` processado; o filtro `filtrarPendentes` exclui automaticamente tudo que já tem `status=baixada` ou `status=sem_imagem`. Registros com `status=falhou` serão retentados.
