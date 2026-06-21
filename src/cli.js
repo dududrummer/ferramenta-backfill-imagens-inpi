@@ -21,15 +21,19 @@ function parseArgs(argv) {
   return { cmd, opts };
 }
 
-// Constrói o índice do que já existe no servidor via SSH find.
-function comandoIndex(cfg, catalogo) {
+// Lista os n_urls que JÁ têm arquivo no servidor (verdade absoluta do que está feito).
+function listarServidor(cfg) {
   const sshArgs = [];
   if (cfg.ssh.key) sshArgs.push('-i', cfg.ssh.key);
   if (cfg.ssh.port) sshArgs.push('-p', String(cfg.ssh.port));
-  sshArgs.push(`${cfg.ssh.user}@${cfg.ssh.host}`,
-    `find ${cfg.remoteImageDir} -type f -name '*.*'`);
-  const out = execFileSync('ssh', sshArgs, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 512 });
-  const nUrls = out.split('\n').map(nUrlDeCaminho).filter(n => n != null);
+  sshArgs.push(`${cfg.ssh.user}@${cfg.ssh.host}`, `find ${cfg.remoteImageDir} -type f -name '*.*'`);
+  const out = execFileSync('ssh', sshArgs, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 1024 });
+  return out.split('\n').map(nUrlDeCaminho).filter(n => n != null);
+}
+
+// Constrói o índice do que já existe no servidor via SSH find.
+function comandoIndex(cfg, catalogo) {
+  const nUrls = listarServidor(cfg);
   catalogo.inserirExistentes(nUrls);
   console.log(`Indexados ${nUrls.length} arquivos já existentes no servidor.`);
 }
@@ -50,7 +54,11 @@ async function comandoRun(cfg, catalogo, opts) {
 
   console.log(`Carregando nominativas e já processados (faixa ${min}–${max})...`);
   const nominativos = await fonte.nominativos(min, max);
-  const processados = new Set(catalogo.nUrlsProcessados());
+  console.log('Listando imagens já no servidor (find via SSH)...');
+  const noServidor = new Set(listarServidor(cfg));
+  const semImagem = new Set(catalogo.nUrlsComStatus('sem_imagem'));
+  const processados = new Set([...noServidor, ...semImagem]);
+  console.log(`Já no servidor: ${noServidor.size} | sem_imagem (catálogo): ${semImagem.size}.`);
   console.log(`Varredura ${min}–${max}: pulando ${nominativos.size} nominativas + ${processados.size} já processados.`);
   console.log('Catálogo:', cfg.catalogPath);
   console.log('Eventos: uma linha por imagem é impressa abaixo (stdout). Capture com  | tee run.log  e acompanhe com  tail -f run.log');

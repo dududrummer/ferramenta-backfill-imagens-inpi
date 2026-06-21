@@ -44,7 +44,10 @@ Indexados 42137 arquivos já existentes no servidor.
 Varre todos os `n_url` de 4145 até `MAX` (o maior `n_url` em `marcas`), tentando baixar a imagem de cada um. São pulados:
 
 - `n_url`s que o ClickHouse marca como `apresentacao='Nominativa'` (não têm logo);
-- `n_url`s já presentes no catálogo local (processados com sucesso ou marcados como sem imagem).
+- `n_url`s cujo arquivo já existe **no servidor** (verificado via SSH `find` no início de cada execução — verdade absoluta);
+- `n_url`s marcados como `sem_imagem` no catálogo local.
+
+Qualquer imagem que foi baixada localmente mas não chegou ao servidor (ex.: execução morta antes do rsync) é automaticamente re-baixada e re-enviada, porque a fonte de verdade é o servidor, não o catálogo local. O comando `index` continua disponível para popular o catálogo manualmente, mas o `run` já faz esse levantamento via SSH no início.
 
 Isso captura imagens de registros com `n_url` que existem no INPI mas ainda não estão na tabela `marcas` (buracos de importação). Após cada lote de `RSYNC_BATCH` downloads, executa um flush (rsync ao servidor remoto).
 
@@ -122,7 +125,8 @@ A ferramenta percorre todos os `n_url` de 4145 até `max(n_url)` da tabela `marc
    SELECT n_url FROM neopi.marcas WHERE apresentacao = 'Nominativa'
    ```
 
-2. **Já processados** — todos os `n_url` registrados no catálogo local SQLite.
+2. **Já no servidor** — `n_url`s cujo arquivo já existe no servidor (consultado via SSH `find` no início do `run`; fonte de verdade absoluta).
+3. **Sem imagem** — `n_url`s marcados como `sem_imagem` no catálogo local SQLite (o INPI confirmou ausência de imagem).
 
 Para cada `n_url` da faixa que não esteja em nenhum dos dois conjuntos, a ferramenta tenta baixar a imagem do INPI. Isso captura registros que existem no INPI mas cujo `n_url` ainda não foi importado para a tabela `marcas` (buracos).
 
@@ -157,7 +161,7 @@ Cada linha representa uma imagem processada:
 
 ## Resumir após interrupção
 
-Basta re-executar o mesmo comando. O catálogo local SQLite registra cada `n_url` processado; o Set de já-processados é carregado no início da varredura e exclui automaticamente tudo que já tem qualquer status registrado. Registros com `status=falhou` serão retentados (não estão nos conjuntos de skip).
+Basta re-executar o mesmo comando. No início de cada `run`, a ferramenta faz um SSH `find` no servidor para saber quais arquivos realmente chegaram lá, e combina isso com os `n_url` marcados como `sem_imagem` no catálogo local para montar o conjunto de skip. Qualquer `n_url` com `status=baixada` mas sem arquivo no servidor (ex.: processo morto antes do rsync) é automaticamente re-tentado. Registros com `status=falhou` também são retentados (não estão nos conjuntos de skip).
 
 ```bash
 # Interrompido? Só rodar de novo:

@@ -59,3 +59,13 @@ test('nUrlsProcessados lista todos os n_url do catálogo', () => {
   expect(c.nUrlsProcessados().sort((a, b) => a - b)).toEqual([7, 8, 9]);
   c.fechar();
 });
+
+test('nUrlsComStatus filtra por status', () => {
+  const c = novo();
+  c.marcar(1, 'baixada', {});
+  c.marcar(2, 'sem_imagem', {});
+  c.marcar(3, 'sem_imagem', {});
+  expect(c.nUrlsComStatus('sem_imagem').sort((a,b)=>a-b)).toEqual([2, 3]);
+  expect(c.nUrlsComStatus('baixada')).toEqual([1]);
+  c.fechar();
+});
