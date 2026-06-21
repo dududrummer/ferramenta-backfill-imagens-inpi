@@ -17,19 +17,27 @@ function carregarConfig(env = process.env) {
   if (torSocksPorts.length !== torControlPorts.length) {
     throw new Error('Número de portas SOCKS e CONTROL deve ser igual');
   }
+  const modo = (env.MODO || 'remoto');
+  const imageDir = env.IMAGE_DIR || env.REMOTE_IMAGE_DIR;
+  // Validação condicional ao modo: servidor não precisa de SSH; remoto precisa.
+  if (modo === 'servidor') {
+    if (!imageDir) throw new Error('No modo servidor, defina IMAGE_DIR (ou REMOTE_IMAGE_DIR) com a pasta das imagens');
+  } else {
+    exigir(env, 'SSH_HOST');
+    exigir(env, 'SSH_USER');
+    exigir(env, 'REMOTE_IMAGE_DIR');
+  }
   return {
     ssh: {
-      host: exigir(env, 'SSH_HOST'),
-      user: exigir(env, 'SSH_USER'),
+      host: env.SSH_HOST || null,
+      user: env.SSH_USER || null,
       key: env.SSH_KEY || null,
       port: parseInt(env.SSH_PORT || '22', 10),
     },
-    modo: (env.MODO || 'remoto'),
-    imageDir: env.IMAGE_DIR || env.REMOTE_IMAGE_DIR,
-    baseImagens: ((env.MODO || 'remoto') === 'servidor')
-      ? (env.IMAGE_DIR || env.REMOTE_IMAGE_DIR)
-      : (env.LOCAL_STAGING || './staging'),
-    remoteImageDir: exigir(env, 'REMOTE_IMAGE_DIR'),
+    modo,
+    imageDir,
+    baseImagens: modo === 'servidor' ? imageDir : (env.LOCAL_STAGING || './staging'),
+    remoteImageDir: env.REMOTE_IMAGE_DIR || imageDir || null,
     ch: {
       host: env.CH_HOST || 'localhost',
       port: parseInt(env.CH_PORT || '8123', 10),
