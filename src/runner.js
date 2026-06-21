@@ -12,6 +12,17 @@ function registrarEvento(cfg, texto) {
   try { fs.appendFileSync(cfg.eventsLog, texto + '\n'); } catch (_) { /* log é best-effort */ }
 }
 
+// Rotaciona o IP do circuito de forma proativa a cada cfg.maxReqPorCircuito requisições
+// (o INPI aguenta ~20/IP). NÃO força re-aquecimento: se o IP novo invalidar a sessão,
+// o 302 ('sessao') re-aquece sozinho. Só zera o contador se o NEWNYM de fato ocorreu.
+async function talvezRotacionar(circuito, pool, cfg) {
+  circuito._reqCount = (circuito._reqCount || 0) + 1;
+  if (circuito._reqCount >= (cfg.maxReqPorCircuito || 18)) {
+    const ok = await pool.newnym(circuito);
+    if (ok) circuito._reqCount = 0;
+  }
+}
+
 function filtrarPendentes(candidatos, catalogo) {
   return candidatos.filter(c => !catalogo.jaProcessado(c.n_url));
 }
@@ -49,11 +60,13 @@ async function processarUm(candidato, circuito, ctx) {
         ext: cls.ext, uploaded: 0, marcar_db: cfg.marcarTemImagem ? 1 : 0, tentativas,
       });
       registrarEvento(cfg, `${horaAgora()} BAIXADA    n_url=${nUrl} ext=${cls.ext}`);
+      await talvezRotacionar(circuito, pool, cfg);
       return 'baixada';
     }
     if (cls.resultado === 'sem_imagem') {
       catalogo.marcar(nUrl, 'sem_imagem', { tentativas });
       registrarEvento(cfg, `${horaAgora()} SEM_IMAGEM n_url=${nUrl}`);
+      await talvezRotacionar(circuito, pool, cfg);
       return 'sem_imagem';
     }
     if (cls.resultado === 'sessao') {
@@ -62,6 +75,7 @@ async function processarUm(candidato, circuito, ctx) {
     }
     if (cls.resultado === 'bloqueio') {
       await pool.newnym(circuito);
+      circuito._reqCount = 0;
       circuito.warm = false;          // IP de saída mudou → sessão precisa ser refeita
       await new Promise(r => setTimeout(r, 1000 * tentativas));
       continue;
@@ -73,4 +87,4 @@ async function processarUm(candidato, circuito, ctx) {
   return 'falhou';
 }
 
-module.exports = { filtrarPendentes, salvarImagem, processarUm, registrarEvento, horaAgora };
+module.exports = { filtrarPendentes, salvarImagem, processarUm, registrarEvento, horaAgora, talvezRotacionar };

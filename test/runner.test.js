@@ -31,3 +31,26 @@ test('registrarEvento sem eventsLog não quebra', () => {
   const { registrarEvento } = require('../src/runner');
   expect(() => registrarEvento({}, 'x')).not.toThrow();
 });
+
+test('talvezRotacionar rotaciona o IP após N requisições e zera o contador', async () => {
+  const { talvezRotacionar } = require('../src/runner');
+  let newnymCalls = 0;
+  const pool = { newnym: async () => { newnymCalls++; return true; } };
+  const circ = {};
+  const cfg = { maxReqPorCircuito: 3 };
+  await talvezRotacionar(circ, pool, cfg);
+  await talvezRotacionar(circ, pool, cfg);
+  expect(newnymCalls).toBe(0);            // ainda não atingiu o limite
+  await talvezRotacionar(circ, pool, cfg); // 3ª → rotaciona
+  expect(newnymCalls).toBe(1);
+  expect(circ._reqCount).toBe(0);          // contador zerado após rotacionar
+});
+
+test('talvezRotacionar mantém o contador se o NEWNYM falhar (cooldown)', async () => {
+  const { talvezRotacionar } = require('../src/runner');
+  const pool = { newnym: async () => false };  // cooldown / falhou
+  const circ = { _reqCount: 2 };
+  const cfg = { maxReqPorCircuito: 3 };
+  await talvezRotacionar(circ, pool, cfg);     // chega a 3, tenta rotacionar, falha
+  expect(circ._reqCount).toBe(3);              // não zerou (tentará de novo)
+});

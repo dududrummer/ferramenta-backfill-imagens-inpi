@@ -44,6 +44,7 @@ function carregarConfig(env = process.env) {
     eventsLog: env.EVENTS_LOG || path.join(path.dirname(env.CATALOG_PATH || './catalogo.sqlite'), 'eventos.log'),
     rsyncBatch: parseInt(env.RSYNC_BATCH || '2000', 10),
     chUpdateBatch: parseInt(env.CH_UPDATE_BATCH || '5000', 10),
+    maxReqPorCircuito: parseInt(env.MAX_REQ_POR_CIRCUITO || '18', 10),
     marcarTemImagem: env.MARCAR_TEM_IMAGEM === '1',
     placeholderHashes: parsePortasComoTexto(env.PLACEHOLDER_HASHES),
     timeoutMs: parseInt(env.TIMEOUT_MS || '30000', 10),

@@ -52,6 +52,8 @@ Os conjuntos de nominativas e de já-processados são carregados uma vez em mem�
 
 Registros já presentes no catálogo local são automaticamente pulados — basta re-executar o comando após uma interrupção.
 
+**Rotação proativa de IP:** cada circuito rotaciona o IP de saída automaticamente a cada ~18 requisições (`MAX_REQ_POR_CIRCUITO`) para ficar abaixo do limite do INPI (~20/IP), evitando bloqueios; a sessão só é re-aquecida se o INPI a invalidar (302).
+
 **Marcação `tem_imagem` no ClickHouse:** desligada por padrão (cada UPDATE varre a tabela toda porque `n_url` não é a chave de ordenação). Para habilitar: `MARCAR_TEM_IMAGEM=1` no `.env`.
 
 **Opções:**
