@@ -2,7 +2,7 @@
 const fs = require('fs');
 const { carregarConfig } = require('./config');
 const { abrirCatalogo } = require('./catalog');
-const { criarPool } = require('./tor-pool');
+const { criarPoolBackend } = require('./pool');
 const { criarFonte } = require('./candidates');
 const { criarExecutor } = require('./exec');
 const { sincronizar } = require('./uploader');
@@ -40,7 +40,7 @@ async function comandoRun(cfg, catalogo, opts) {
   const concurrency = opts.concurrency || cfg.concurrency;
   const executor = criarExecutor(cfg);
   const fonte = criarFonte({ executor, database: cfg.ch.database });
-  const pool = criarPool(cfg);
+  const pool = criarPoolBackend(cfg);
   const FLOOR = 4145;
 
   let min = FLOOR, max = null;

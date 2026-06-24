@@ -4,7 +4,7 @@
 const { warmSession } = require('./http-session');
 const { buscarDetalhe } = require('./detalhe');
 const { parseDetailFull } = require('./parser-html');
-const { criarPool } = require('./tor-pool');
+const { criarPoolBackend } = require('./pool');
 const { criarStager } = require('./ch-stage');
 const { talvezRotacionar, horaAgora, registrarEvento } = require('./runner');
 
@@ -55,7 +55,7 @@ function flushStager(stager) {
 
 async function comandoRunDespachos(cfg, catalogo, opts) {
   const concurrency = opts.concurrency || cfg.concurrency;
-  const pool = criarPool(cfg);
+  const pool = criarPoolBackend(cfg);
   const stager = criarStager(cfg);
   const FLOOR = 4145;
   let min = FLOOR, max = null;

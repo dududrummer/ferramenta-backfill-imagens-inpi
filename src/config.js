@@ -11,11 +11,21 @@ function exigir(env, nome) {
 }
 
 function carregarConfig(env = process.env) {
+  // BACKEND: 'tor' (padrão — daily/atualizações continuam nele) ou 'proxy' (re-raspagem em massa).
+  const backend = (env.BACKEND || 'tor').toLowerCase();
   const torSocksPorts = parsePortas(env.TOR_SOCKS_PORTS);
   const torControlPorts = parsePortas(env.TOR_CONTROL_PORTS);
-  if (torSocksPorts.length === 0) throw new Error('TOR_SOCKS_PORTS vazio');
-  if (torSocksPorts.length !== torControlPorts.length) {
-    throw new Error('Número de portas SOCKS e CONTROL deve ser igual');
+  if (backend === 'tor') {
+    if (torSocksPorts.length === 0) throw new Error('TOR_SOCKS_PORTS vazio');
+    if (torSocksPorts.length !== torControlPorts.length) {
+      throw new Error('Número de portas SOCKS e CONTROL deve ser igual');
+    }
+  } else if (backend === 'proxy') {
+    for (const k of ['PROXY_HOST', 'PROXY_PORT', 'PROXY_USER_TEMPLATE', 'PROXY_PASS']) {
+      if (!env[k]) throw new Error(`BACKEND=proxy exige ${k} no .env`);
+    }
+  } else {
+    throw new Error(`BACKEND inválido: ${backend} (use 'tor' ou 'proxy')`);
   }
   const modo = (env.MODO || 'remoto');
   const imageDir = env.IMAGE_DIR || env.REMOTE_IMAGE_DIR;
@@ -44,6 +54,17 @@ function carregarConfig(env = process.env) {
       database: env.CH_DATABASE || 'neopi',
       user: env.CH_USER || 'default',
       password: env.CH_PASSWORD || '',
+    },
+    backend,
+    proxy: {
+      host: env.PROXY_HOST || null,
+      port: parseInt(env.PROXY_PORT || '0', 10),
+      // Template do usuário sticky do provedor, com {session} onde vai o id (ex.: DataImpulse:
+      // "SEU_LOGIN__cr.br;sessid.{session}"). Sem {session} => rotativo a cada conexão.
+      userTemplate: env.PROXY_USER_TEMPLATE || null,
+      pass: env.PROXY_PASS || null,
+      protocol: (env.PROXY_PROTOCOL || 'socks5').toLowerCase(),   // socks5 | http
+      poolSize: parseInt(env.PROXY_POOL_SIZE || env.CONCURRENCY || '50', 10),
     },
     torSocksPorts,
     torControlPorts,
