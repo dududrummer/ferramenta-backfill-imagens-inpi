@@ -13,14 +13,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Processa um n_url: busca detalhe, parseia, empilha no stager. Atualiza o catálogo (retomada).
 async function processarDespacho(nUrl, circ, ctx) {
   const { cfg, pool, stager, catalogo } = ctx;
-  let tent = 0;
+  let tent = 0, motivo = '?', ultErro = '';
   while (tent < cfg.maxTentativas) {
     tent++;
     if (!circ.warm) {
-      try { await warmSession(circ, cfg.timeoutMs); } catch (_) { circ.warm = false; }
-      if (!circ.warm) { await pool.newnym(circ); await sleep(1000 * tent); continue; }
+      try { await warmSession(circ, cfg.timeoutMs); } catch (e) { circ.warm = false; ultErro = e.message; }
+      if (!circ.warm) { motivo = 'warm_falhou'; await pool.newnym(circ); await sleep(1000 * tent); continue; }
     }
     const r = await buscarDetalhe(circ, nUrl, cfg.timeoutMs);
+    motivo = r.resultado; if (r.erro) ultErro = r.erro;
     if (r.resultado === 'ok') {
       let parsed;
       try { parsed = parseDetailFull(r.html, nUrl); }
@@ -40,8 +41,8 @@ async function processarDespacho(nUrl, circ, ctx) {
     if (r.resultado === 'bloqueio') { await pool.newnym(circ); circ._reqCount = 0; circ.warm = false; await sleep(1000 * tent); continue; }
     await sleep(1000 * tent);   // erro transitório
   }
-  catalogo.marcar(nUrl, 'falhou', { tentativas: tent, erro: 'maxTentativas' });
-  registrarEvento(cfg, `${horaAgora()} FALHOU     n_url=${nUrl}`);
+  catalogo.marcar(nUrl, 'falhou', { tentativas: tent, erro: `${motivo}${ultErro ? ': ' + ultErro : ''}` });
+  registrarEvento(cfg, `${horaAgora()} FALHOU     n_url=${nUrl} (motivo=${motivo}${ultErro ? ' | ' + ultErro : ''})`);
   return 'falhou';
 }
 
