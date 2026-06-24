@@ -7,6 +7,7 @@ const { criarFonte } = require('./candidates');
 const { criarExecutor } = require('./exec');
 const { sincronizar } = require('./uploader');
 const { filtrarPendentes, processarUm, registrarEvento } = require('./runner');
+const { comandoRunDespachos } = require('./despacho-runner');
 const { nUrlDeCaminho, caminhoImagem } = require('./sharding');
 
 function parseArgs(argv) {
@@ -124,13 +125,14 @@ async function main() {
   const { cmd, opts } = parseArgs(process.argv);
   try {
     if (cmd === 'run') await comandoRun(cfg, catalogo, opts);
+    else if (cmd === 'run-despachos') await comandoRunDespachos(cfg, catalogo, opts);
     else if (cmd === 'index') await comandoIndex(cfg, catalogo);
     else if (cmd === 'status') console.log(catalogo.estatisticas());
     else if (cmd === 'flush') {
       const fonte = criarFonte({ executor: criarExecutor(cfg), database: cfg.ch.database });
       await flush(cfg, catalogo, fonte, opts);
     } else {
-      console.log('Comandos: index | run [--range A-B] [--concurrency N] [--keep-local] | status | flush');
+      console.log('Comandos: index | run [--range A-B] [--concurrency N] [--keep-local] | run-despachos --range A-B [--concurrency N] | status | flush');
     }
   } finally {
     catalogo.fechar();
