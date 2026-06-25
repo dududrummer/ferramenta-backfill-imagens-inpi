@@ -9,6 +9,7 @@
 const N    = parseInt(process.env.NUM_PROC || '8', 10);
 const PPP  = parseInt(process.env.PORTAS_POR_PROC || '3', 10);
 const CONC = process.env.CONC_POR_PROC || '30';
+const TENT = process.env.MAX_TENTATIVAS || '5';
 const MIN  = parseInt(process.env.MIN || '4145', 10);
 const MAX  = parseInt(process.env.MAX || '6686815', 10);
 const SPAN = Math.floor((MAX - MIN + 1) / N);
@@ -37,6 +38,7 @@ for (let i = 0; i < N; i++) {
       TOR_SOCKS_PORTS: socks.join(','),
       TOR_CONTROL_PORTS: control.join(','),
       CONCURRENCY: CONC,
+      MAX_TENTATIVAS: TENT,
       CATALOG_PATH: `catalogos/desp_${i}.sqlite`,
     },
   });
