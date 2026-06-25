@@ -250,9 +250,9 @@ def subir_tor(ports, data_base, log):
         procs.append((p, proc, os.path.join(d, "notice.log")))
         log("Tor subindo na porta %d (pid %d)" % (p, proc.pid))
         time.sleep(1)
-    # espera bootstrap (até ~120s)
+    # espera bootstrap (até ~180s; a 1ª execução baixa o consenso e é mais lenta)
     log("Aguardando bootstrap do Tor...")
-    prazo = time.time() + 120
+    prazo = time.time() + 180
     prontos = set()
     while time.time() < prazo and len(prontos) < len(procs):
         for p, _proc, notice in procs:
@@ -266,7 +266,7 @@ def subir_tor(ports, data_base, log):
                 pass
         time.sleep(2)
     log("Tor pronto: %d/%d portas com Bootstrapped 100%%" % (len(prontos), len(procs)))
-    return procs
+    return procs, prontos
 
 
 def parar_tor(procs, log):
@@ -318,7 +318,16 @@ def rodar(args, log):
 
     tor_procs = []
     if not args.no_tor:
-        tor_procs = subir_tor(ports, args.tor_data, log)
+        tor_procs, prontos = subir_tor(ports, args.tor_data, log)
+        if not prontos:
+            parar_tor(tor_procs, log)
+            raise SystemExit(
+                "Nenhuma instância Tor bootstrapou — abortando (a faixa NÃO foi tocada).\n"
+                "Causas comuns:\n"
+                "  - porta ocupada (tor do sistema na 9050): `sudo systemctl stop tor` "
+                "OU use --base-port 9060;\n"
+                "  - 1ª execução lenta: rode de novo (o consenso fica em cache em ~/.turbo-tor);\n"
+                "  - sem saída pra rede do Tor: veja ~/.turbo-tor/tor<porta>/notice.log.")
 
     work_q = queue.Queue(maxsize=conc * 4)
     result_q = queue.Queue(maxsize=conc * 4)
