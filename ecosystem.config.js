@@ -8,9 +8,9 @@
 // o PM2 NÃO reinicia; se CRASHAR (exit !=0), reinicia e retoma pelo catálogo.
 const N    = parseInt(process.env.NUM_PROC || '8', 10);
 const PPP  = parseInt(process.env.PORTAS_POR_PROC || '3', 10);
-const CONC = process.env.CONC_POR_PROC || '50';
+const CONC = process.env.CONC_POR_PROC || '30';
 const MIN  = parseInt(process.env.MIN || '4145', 10);
-const MAX  = parseInt(process.env.MAX || '7000000', 10);
+const MAX  = parseInt(process.env.MAX || '6686815', 10);
 const SPAN = Math.floor((MAX - MIN + 1) / N);
 
 const apps = [];

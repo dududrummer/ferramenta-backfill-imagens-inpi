@@ -7,9 +7,9 @@ set -euo pipefail
 
 NUM_PROC="${NUM_PROC:-8}"
 PORTAS_POR_PROC="${PORTAS_POR_PROC:-3}"
-CONC_POR_PROC="${CONC_POR_PROC:-50}"
+CONC_POR_PROC="${CONC_POR_PROC:-30}"
 MIN="${MIN:-4145}"
-MAX="${MAX:-7000000}"
+MAX="${MAX:-6686815}"
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"; cd "$DIR"
 [ -f .env ] || { echo "ERRO: crie o .env (cp .env.tor.example .env e ajuste SSH/CH)."; exit 1; }
