@@ -186,20 +186,24 @@ def buscar_detalhe(circ, n, timeout):
 
 
 def processar(n, circ, max_tent, timeout):
-    """Processa um n_url com retry/rotação. Retorna (status_final, html_ou_None, tentativas)."""
+    """Processa um n_url com retry/rotação. Retorna (status_final, html_ou_None, tentativas, motivo)."""
     nodata = False
+    motivo = "?"
     for tent in range(1, max_tent + 1):
         if not circ.warm:
             if not warm(circ, timeout):
-                circ.rotate(); time.sleep(min(tent, 5)); continue   # warm_falhou
+                motivo = "warm_falhou: " + (circ.last_err or "")
+                circ.rotate(); time.sleep(min(tent, 5)); continue
         status, html, err = buscar_detalhe(circ, n, timeout)
         if err:
-            circ.warm = False; time.sleep(min(tent, 5)); continue   # erro transitório
+            motivo = "erro: " + err
+            circ.warm = False; time.sleep(min(tent, 5)); continue
         r = classificar(status, html)
         if r == "ok":
-            return "ok", html, tent
+            return "ok", html, tent, "ok"
         if r == "inexistente":
-            return "sem_dados", None, tent                          # definitivo, não re-tenta
+            return "sem_dados", None, tent, "inexistente"            # definitivo, não re-tenta
+        motivo = r
         if r == "sessao":
             circ.warm = False; continue                             # re-aquece e re-tenta
         if r == "bloqueio":
@@ -207,7 +211,7 @@ def processar(n, circ, max_tent, timeout):
         # sem_dados: pode ser transitório -> rotaciona e re-tenta (combinado com o usuário)
         nodata = True
         circ.rotate(); time.sleep(min(tent, 5))
-    return ("sem_dados" if nodata else "falhou"), None, max_tent
+    return ("sem_dados" if nodata else "falhou"), None, max_tent, motivo
 
 
 # ----------------------------------------------------------------------------
@@ -350,8 +354,8 @@ def rodar(args, log):
             n = work_q.get()
             if n is None:
                 break
-            st, html, tent = processar(n, circ, args.max_tentativas, args.timeout)
-            result_q.put((n, st, html, tent))
+            st, html, tent, motivo = processar(n, circ, args.max_tentativas, args.timeout)
+            result_q.put((n, st, html, tent, motivo))
 
     def writer():
         batch_idx = 0
@@ -377,29 +381,40 @@ def rodar(args, log):
             os.makedirs(batch_dir, exist_ok=True)
             pend = []
 
+        motivos = {}
+        amostra = 0
         processados = 0
         while True:
             item = result_q.get()
             if item is None:
                 break
-            n, st, html, tent = item
+            n, st, html, tent, motivo = item
             if st == "ok":
                 with open(os.path.join(batch_dir, "%d.html" % n), "w", encoding="latin1") as f:
                     f.write(html)
                 pend.append(n)
                 if len(pend) >= args.flush:
                     flush()
-            elif st == "sem_dados":
-                catalog.mark(n, "sem_dados", tent)
-                contadores["sem_dados"] += 1
             else:
-                catalog.mark(n, "falhou", tent, "maxTentativas")
+                k = motivo.split(":")[0]
+                motivos[k] = motivos.get(k, 0) + 1
+                if st == "sem_dados":
+                    catalog.mark(n, "sem_dados", tent)
+                    contadores["sem_dados"] += 1
+                else:
+                    catalog.mark(n, "falhou", tent, motivo[:200])
+                    contadores["falhou"] += 1
+                    if amostra < 10:                      # mostra os 1ºs motivos p/ diagnóstico
+                        log("FALHOU n=%d motivo=%s" % (n, motivo[:160]))
+                        amostra += 1
             processados += 1
             if processados % 1000 == 0:
-                log("...%d processados | gravado=%d sem_dados=%d falhou=%d (n~%d)" %
+                log("...%d processados | gravado=%d sem_dados=%d falhou=%d | motivos=%s (n~%d)" %
                     (processados, contadores["gravado"], contadores["sem_dados"],
-                     contadores["falhou"], n))
+                     contadores["falhou"], motivos, n))
         flush()  # resto
+        if motivos:
+            log("motivos (não-ok): %s" % motivos)
 
     os.makedirs(args.tmp, exist_ok=True)
     th_feeder = threading.Thread(target=feeder, name="feeder")
