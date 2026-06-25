@@ -23,14 +23,14 @@ bash tor/start-tor.sh "$SOCKS" "$CONTROL"
 
 mkdir -p logs catalogos
 echo "pm2 start: $NUM_PROC processos × conc $CONC_POR_PROC | faixa $MIN-$MAX"
+# Só ADICIONA os apps desp-* (não toca em nenhum outro app do PM2). NÃO faz pm2 save de propósito.
 NUM_PROC="$NUM_PROC" PORTAS_POR_PROC="$PORTAS_POR_PROC" CONC_POR_PROC="$CONC_POR_PROC" MIN="$MIN" MAX="$MAX" \
-  pm2 start ecosystem.config.js --update-env
-pm2 save
+  pm2 start ecosystem.config.js --only "desp-0,desp-1,desp-2,desp-3,desp-4,desp-5,desp-6,desp-7" --update-env
 echo
-echo "OK. Comandos:"
-echo "  pm2 ls                 # status dos 8 processos"
-echo "  pm2 logs               # logs ao vivo (todos)"
-echo "  pm2 logs desp-0        # log de um"
-echo "  pm2 stop all / pm2 delete all   # parar/remover"
-echo "Quando todos ficarem 'stopped' (exit 0 = faixa concluída), faça o merge no droplet:"
+echo "OK — apenas os apps desp-* foram adicionados (seus outros apps PM2 ficaram intactos)."
+echo "Comandos (sempre por NOME, nunca 'all'):"
+echo "  pm2 ls                                  # status"
+echo "  pm2 logs desp-0                          # log de uma faixa"
+echo "  pm2 delete desp-0 desp-1 ... desp-7      # remover SÓ os despachos"
+echo "Quando os 8 desp-* ficarem 'stopped' (exit 0 = faixa concluída), merge no droplet:"
 echo "  node worker/scripts/rerasp-merge.js"
