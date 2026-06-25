@@ -217,7 +217,8 @@ function extractClassificacoes($, processo) {
     .first();
 
   const out = [];
-  let lastNacional = '';   // classe nacional herdada nas linhas de continuação (só sub-classe + especificação)
+  let lastNacional = '';      // classe nacional herdada nas linhas de continuação
+  let lastNacionalEsp = null; // especificação herdada quando vem por rowspan (linha só com a sub-classe)
   sec.find('tr').each((_, tr) => {
     const tdEls = $(tr).children('th,td').toArray();
     if (!tdEls.length) return;
@@ -238,14 +239,22 @@ function extractClassificacoes($, processo) {
       return;
     }
 
-    // NACIONAL: 1ª célula é um código numérico. Linha com >=3 células traz a classe; linhas de
-    // continuação têm 2 células (sub-classe + especificação) e herdam a classe da linha anterior.
+    // NACIONAL: 1ª célula é um código numérico. >=3 células = linha com a classe; 2 células =
+    // continuação com especificação própria (sub-classe + espec.); 1 célula = continuação onde a
+    // especificação veio por rowspan da linha de cima (só a sub-classe) → herda a espec. anterior.
     if (/^\d{1,3}$/.test(first)) {
-      let classe, sub_classe;
-      if (tdEls.length >= 3) { classe = cells[0]; sub_classe = cells[1]; lastNacional = classe; }
-      else                   { classe = lastNacional; sub_classe = cells[0]; }
-      const { especificacao, especificacao_ingles } = pickEspecificacao($, $esp);
-      out.push({ processo, tipo: 'NACIONAL', classe, sub_classe, edicao: '', situacao: '', especificacao, especificacao_ingles, revisao: '' });
+      let classe, sub_classe, esp;
+      if (tdEls.length >= 3) {
+        classe = cells[0]; sub_classe = cells[1]; lastNacional = classe;
+        esp = pickEspecificacao($, $esp); lastNacionalEsp = esp;
+      } else if (tdEls.length === 2) {
+        classe = lastNacional; sub_classe = cells[0];
+        esp = pickEspecificacao($, $esp); lastNacionalEsp = esp;
+      } else { // 1 célula: a espec. está em rowspan na linha anterior, não nesta célula
+        classe = lastNacional; sub_classe = cells[0];
+        esp = lastNacionalEsp || { especificacao: '', especificacao_ingles: '' };
+      }
+      out.push({ processo, tipo: 'NACIONAL', classe, sub_classe, edicao: '', situacao: '', especificacao: esp.especificacao, especificacao_ingles: esp.especificacao_ingles, revisao: '' });
     }
   });
   return out;
