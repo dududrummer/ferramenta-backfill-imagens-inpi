@@ -1,5 +1,18 @@
 // Sessão pePI (cookies) para o INPI — espelha o app original (worker/src/updater/http-session.js).
 const https = require('https');
+const zlib = require('zlib');
+
+// Descomprime o corpo conforme o Content-Encoding e devolve a string latin1 (o parser exige latin1).
+// gzip/deflate cortam o tráfego ~5–10× (HTML comprime muito) — crucial no custo do proxy (pay-per-GB).
+function corpoLatin1(buffer, contentEncoding) {
+  try {
+    const enc = String(contentEncoding || '').toLowerCase();
+    if (enc.includes('gzip')) return zlib.gunzipSync(buffer).toString('latin1');
+    if (enc.includes('deflate')) return zlib.inflateSync(buffer).toString('latin1');
+    if (enc.includes('br')) return zlib.brotliDecompressSync(buffer).toString('latin1');
+  } catch (_) { /* se falhar a descompressão, cai no cru */ }
+  return buffer.toString('latin1');
+}
 
 const BASE = 'https://busca.inpi.gov.br/pePI';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -31,7 +44,7 @@ function isSessionExpired(status, html) {
 // Requisição de texto (warmup). Captura set-cookie no jar e manda Cookie.
 function httpRequest(agent, { method, path, body, jar, referer, timeoutMs }) {
   return new Promise((resolve, reject) => {
-    const headers = { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml', 'Cookie': jar.header() };
+    const headers = { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml', 'Accept-Encoding': 'gzip, deflate, br', 'Cookie': jar.header() };
     if (referer) headers['Referer'] = referer;
     if (body != null) {
       headers['Content-Type'] = 'application/x-www-form-urlencoded';
@@ -41,7 +54,7 @@ function httpRequest(agent, { method, path, body, jar, referer, timeoutMs }) {
       if (res.headers['set-cookie']) jar.setFromHeaders(res.headers['set-cookie']);
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, location: res.headers['location'] || '', html: Buffer.concat(chunks).toString('latin1') }));
+      res.on('end', () => resolve({ status: res.statusCode, location: res.headers['location'] || '', html: corpoLatin1(Buffer.concat(chunks), res.headers['content-encoding']) }));
     });
     req.on('error', reject);
     req.on('timeout', () => req.destroy(new Error('timeout')));
