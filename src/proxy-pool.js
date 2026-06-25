@@ -20,7 +20,11 @@ function criarAgente(cfg, user) {
   // encodeURIComponent garante que ';' '.' ',' do usuário sticky cheguem literais ao proxy
   // (new URL decodifica de volta), sem quebrar o parse da URL.
   const cred = `${encodeURIComponent(user)}:${encodeURIComponent(pass)}`;
-  const agOpts = { keepAlive: true, keepAliveMsecs: 30000, maxSockets: 64, timeout: 60000 };
+  // keepAlive DESLIGADO no proxy remoto: a DataImpulse fecha conexões reusadas, e o Node reaproveitar
+  // um socket morto gera "Socket closed". Conexão nova por requisição é robusto; a sticky session
+  // (mesmo IP) é mantida pelo USUÁRIO, não pela conexão. (No Tor local, keepAlive funciona — por isso
+  // o tor-pool mantém.)
+  const agOpts = { keepAlive: false, maxSockets: 64, timeout: 60000 };
   if (protocol === 'http') {
     if (!HttpsProxyAgent) throw new Error('PROXY_PROTOCOL=http exige o pacote https-proxy-agent');
     return new HttpsProxyAgent(`http://${cred}@${host}:${port}`, agOpts);
