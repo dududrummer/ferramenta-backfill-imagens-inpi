@@ -17,8 +17,11 @@ helper Node `parse_insert.js`). O Python só faz fetch/orquestração. **Sem ima
 ```bash
 # Tor
 sudo apt-get install -y tor          # (ou: tem que ter o binário `tor` no PATH)
-# Python
-pip install -r turbo/requirements.txt
+# Python — requests + PySocks
+#   Debian/Ubuntu 24.04+ (PEP 668 bloqueia pip system-wide): use o apt
+sudo apt install -y python3-requests python3-socks
+#   Colab / venv: pip funciona normalmente
+#   pip install -r turbo/requirements.txt
 # Node + deps da ferramenta (para o parse_insert.js) e o .env (SSH/CH) na RAIZ da ferramenta
 npm install
 cp .env.tor.example .env             # ajuste SSH_HOST/SSH_USER/SSH_KEY/CH_DATABASE
