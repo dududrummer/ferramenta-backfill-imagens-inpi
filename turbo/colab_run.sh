@@ -42,7 +42,8 @@ if [ ! -f /root/.ssh/turbo_key ]; then echo "ERRO: chave SSH ausente — defina 
 chmod 600 /root/.ssh/turbo_key
 
 echo -n "[ssh] SELECT 1 -> "
-ssh -i /root/.ssh/turbo_key root@68.183.113.157 'clickhouse-client --query "SELECT 1"' \
+# -n: NAO ler stdin. Sem isso, sob `curl | bash` o ssh engole o resto do script (o run nao executa).
+ssh -n -i /root/.ssh/turbo_key root@68.183.113.157 'clickhouse-client --query "SELECT 1"' \
   || { echo "FALHOU — a chave nao esta autorizada no droplet (~/.ssh/authorized_keys)."; exit 1; }
 
 A="${RANGE%-*}"; B="${RANGE#*-}"
