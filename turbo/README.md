@@ -60,6 +60,16 @@ tail -f logs/turbo.out
 - Reiniciar continua de onde parou (pula `gravado`/`sem_dados` pelo catálogo).
 - Para forçar reraspagem do zero de uma faixa: apague o catálogo dela.
 
+## Colab (1 comando)
+Abra o notebook direto do GitHub:
+`https://colab.research.google.com/github/dududrummer/ferramenta-backfill-imagens-inpi/blob/master/turbo/colab.ipynb`
+
+Ou, numa célula do Colab, setup em um comando:
+```python
+!curl -fsSL https://raw.githubusercontent.com/dududrummer/ferramenta-backfill-imagens-inpi/master/turbo/colab_setup.sh | bash
+```
+Depois suba a chave SSH em `/root/.ssh/turbo_key`, monte o Drive (catálogo persistente) e rode o turbo. Detalhes no `turbo/colab.ipynb`.
+
 ## Merge (depois)
 Continua o mesmo do sistema: quando as faixas terminarem, `node worker/scripts/rerasp-merge.js`
 no droplet faz o swap `*_rerasp` → vivas.
