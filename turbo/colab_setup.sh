@@ -21,7 +21,7 @@ npm install --silent
 
 echo "[3/4] .env (MODO=remoto) + ssh config..."
 mkdir -p /root/.ssh
-printf 'Host 68.183.113.157\n  StrictHostKeyChecking no\n  UserKnownHostsFile=/dev/null\n' > /root/.ssh/config
+printf 'Host 68.183.113.157\n  StrictHostKeyChecking no\n  UserKnownHostsFile=/dev/null\n  LogLevel ERROR\n' > /root/.ssh/config
 chmod 600 /root/.ssh/config
 printf 'MODO=remoto\nSSH_HOST=68.183.113.157\nSSH_USER=root\nSSH_KEY=/root/.ssh/turbo_key\nREMOTE_IMAGE_DIR=/data/bancoImagensINPI\nCH_DATABASE=neopi\n' > /content/bf/.env
 
